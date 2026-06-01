@@ -3,7 +3,11 @@ import { sampleNormal, sampleUniform } from "./distributions";
 import { ci95, mean } from "./stats";
 import type { KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
 
-function runReplica(input: ScenarioInput, replica: number): SimulationReplicaResult {
+function runReplica(
+  input: ScenarioInput,
+  replica: number,
+  onDayProcessed?: (info: { replica: number; day: number; totalDays: number }) => void,
+): SimulationReplicaResult {
   const seed = input.seed + replica * 9973;
   const rng = new LcgRng(seed);
   const kiosksByCong = new Map<string, typeof input.kiosks>();
@@ -55,6 +59,7 @@ function runReplica(input: ScenarioInput, replica: number): SimulationReplicaRes
         }
       }
     }
+    onDayProcessed?.({ replica, day, totalDays: input.global.horizonDays });
   }
 
   const kiosks: KioskRunMetrics[] = input.kiosks.map((k) => {
@@ -115,9 +120,25 @@ function overConfigWarnings(input: ScenarioInput): string[] {
 }
 
 export function runSimulation(input: ScenarioInput): SimulationResult {
+  return runSimulationWithProgress(input);
+}
+
+export function runSimulationWithProgress(
+  input: ScenarioInput,
+  onProgress?: (info: { replica: number; day: number; totalReplicas: number; totalDays: number }) => void,
+): SimulationResult {
   const replicas: SimulationReplicaResult[] = [];
   for (let r = 0; r < input.global.replicas; r++) {
-    replicas.push(runReplica(input, r + 1));
+    replicas.push(
+      runReplica(input, r + 1, ({ replica, day, totalDays }) => {
+        onProgress?.({
+          replica,
+          day,
+          totalReplicas: input.global.replicas,
+          totalDays,
+        });
+      }),
+    );
   }
 
   const margins = replicas.map((r) => r.totalMargin);

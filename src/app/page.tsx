@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readLastResult, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
+import { runSimulationWithProgress } from "@/lib/sim/engine";
+import { validateScenario } from "@/lib/validation/scenario";
 import type { Conglomerate, Kiosk, ScenarioInput, SimulationResult } from "@/types/simulation";
 
 const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").then((m) => m.KioskLeafletMap), { ssr: false });
@@ -36,6 +38,7 @@ export default function Home() {
   const [errors, setErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
+  const [progressReplica, setProgressReplica] = useState(0);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
 
   useEffect(() => {
@@ -111,31 +114,32 @@ export default function Home() {
 
   const runSimulation = async () => {
     const input = buildInput();
-    const horizon = Math.max(1, input.global.horizonDays);
-    const step = Math.max(1, Math.ceil(horizon / 120));
+    const validationErrors = validateScenario(input);
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors.map((e) => `${e.field}: ${e.message}`));
+      return;
+    }
+
+    const totalDays = Math.max(1, input.global.horizonDays);
+    const totalReplicas = Math.max(1, input.global.replicas);
     setIsRunning(true);
     setProgressDay(0);
-
-    const timer = setInterval(() => {
-      setProgressDay((prev) => Math.min(horizon - 1, prev + step));
-    }, 60);
+    setProgressReplica(0);
 
     try {
-      const res = await fetch("/api/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrors((data.errors ?? []).map((e: { field: string; message: string }) => `${e.field}: ${e.message}`));
-        return;
-      }
       setErrors([]);
-      const simResult = data.result as SimulationResult;
+      // Run the simulator locally and expose true execution progress (replica/day).
+      const simResult = runSimulationWithProgress(input, ({ replica, day }) => {
+        setProgressReplica(replica);
+        setProgressDay(day);
+      }) as SimulationResult;
       saveHistoryEntry(simResult);
       saveLastResult(simResult);
       setHistoryCount(readHistory().length);
       setResult(simResult);
-      setProgressDay(horizon);
+      setProgressReplica(totalReplicas);
+      setProgressDay(totalDays);
     } finally {
-      clearInterval(timer);
       setTimeout(() => setIsRunning(false), 250);
     }
   };
@@ -193,13 +197,25 @@ export default function Home() {
         <main className="p-4">
           <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
             <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias)</span>
-              <span className="font-mono text-[var(--text-primary)]">{Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}</span>
+              <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias reales)</span>
+              <span className="font-mono text-[var(--text-primary)]">
+                Replica {Math.min(progressReplica, draft.replicas)} / {draft.replicas} | Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
+              </span>
             </div>
             <div className="h-3 w-full overflow-hidden rounded bg-[var(--btn-secondary)]">
               <div
                 className="h-full bg-[var(--accent)] transition-all duration-100"
-                style={{ width: `${Math.max(0, Math.min(100, (Math.min(progressDay, draft.horizonDays) / Math.max(1, draft.horizonDays)) * 100))}%` }}
+                style={{
+                  width: `${Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      (((Math.max(0, Math.min(progressReplica - 1, draft.replicas - 1)) * Math.max(1, draft.horizonDays)) + Math.min(progressDay, draft.horizonDays)) /
+                        Math.max(1, draft.replicas * draft.horizonDays)) *
+                        100,
+                    ),
+                  )}%`,
+                }}
               />
             </div>
             <div className="mt-2 text-xs text-[var(--text-secondary)]">
