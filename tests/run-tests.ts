@@ -36,7 +36,7 @@ const base: ScenarioInput = {
   scenario: "A",
   seed: 123,
   conglomerates: [{ id: "cg-1", nombre: "c1", departamento: "d", dailyDemand: { kind: "normal", mu: 1000, sigma: 100 }, interestPct: 0.05, operationalHours: 12 }],
-  kiosks: [{ id: "k1", nombre: "k1", conglomerateId: "cg-1", lat: -26.8, lon: -65.2, chain: "Gobierno", acquisitionPrice: 7000 }],
+  kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", conglomerateId: "cg-1", lat: -26.8, lon: -65.2, chain: "Gobierno", acquisitionPrice: 7000 }],
   global: {
     capacityMaxDevices: 100,
     horizonDays: 90,
