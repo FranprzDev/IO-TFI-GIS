@@ -449,3 +449,24 @@ Bajo:
 
 
 
+
+## 22. Checklist de Implementacion (estado actual)
+
+- [x] Motor de simulacion en TypeScript sin librerias externas para PRNG/distribuciones.
+- [x] Soporte de distribuciones Uniforme, Normal y Poisson con interfaces tipadas por `kind`.
+- [x] Seed por `Date.now()` con posibilidad de reproducibilidad por seed inyectada.
+- [x] Validacion de inputs en frontend (`type=number`, `min`, `max`, `required`) y backend (`/api/simulate`).
+- [x] Modal obligatorio de confirmacion `Estas seguro?` en botones de acciones criticas.
+- [x] Mapa interactivo (canvas UI) con click para crear marcador y kiosko con lat/lon.
+- [x] Multiples kioskos soportados por interfaz sin limite fijo.
+- [x] Simulacion diaria por horizonte configurable y replicas.
+- [x] Regla de capacidad global editable + umbral operativo 85% con disparo de recoleccion.
+- [x] Comparacion Escenario A vs Escenario B con KPIs para decision manual.
+- [x] Historial local en `localStorage` con metadata de corrida y resumen de KPIs.
+- [x] Carga de datasets CSV desde `information/` por endpoint `/api/bootstrap`.
+- [x] Alertas de sobreconfiguracion kiosko/demanda potencial.
+- [x] Estimacion de IC 95% para KPIs principales (margen, ingreso, costo, dispositivos, amortizacion).
+- [x] Pipeline de calidad ejecutable: `pnpm lint`, `pnpm test`, `pnpm build`.
+- [ ] Persistencia de escenarios A/B completos en localStorage con versionado de schema.
+- [ ] Exportacion de resultados para informe (CSV/JSON UI).
+- [ ] Cobertura de pruebas de interfaz (E2E/RTL) y hardening adicional de UX.
