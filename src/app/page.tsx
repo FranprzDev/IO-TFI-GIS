@@ -38,6 +38,7 @@ export default function Home() {
   const [errors, setErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
+  const [progressReplica, setProgressReplica] = useState(0);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
 
   useEffect(() => {
@@ -120,19 +121,23 @@ export default function Home() {
     }
 
     const totalDays = Math.max(1, input.global.horizonDays);
+    const totalReplicas = Math.max(1, input.global.replicas);
     setIsRunning(true);
     setProgressDay(0);
+    setProgressReplica(0);
 
     try {
       setErrors([]);
       // Run the simulator locally and expose true execution progress (replica/day).
-      const simResult = runSimulationWithProgress(input, ({ day }) => {
+      const simResult = runSimulationWithProgress(input, ({ replica, day }) => {
+        setProgressReplica(replica);
         setProgressDay(day);
       }) as SimulationResult;
       saveHistoryEntry(simResult);
       saveLastResult(simResult);
       setHistoryCount(readHistory().length);
       setResult(simResult);
+      setProgressReplica(totalReplicas);
       setProgressDay(totalDays);
     } finally {
       setTimeout(() => setIsRunning(false), 250);
@@ -152,6 +157,13 @@ export default function Home() {
       setDraft(baseDraft);
     }
   };
+
+  const totalWork = Math.max(1, draft.replicas * draft.horizonDays);
+  const completedWork = Math.max(
+    0,
+    Math.min(totalWork, Math.max(0, progressReplica - 1) * Math.max(1, draft.horizonDays) + Math.min(progressDay, draft.horizonDays)),
+  );
+  const progressPct = Math.min(100, (completedWork / totalWork) * 100);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -194,21 +206,14 @@ export default function Home() {
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias reales)</span>
               <span className="font-mono text-[var(--text-primary)]">
-                Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
+                Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays} | Replica {Math.min(progressReplica, draft.replicas)} / {draft.replicas} | {progressPct.toFixed(1)}%
               </span>
             </div>
             <div className="h-3 w-full overflow-hidden rounded bg-[var(--btn-secondary)]">
               <div
                 className="h-full bg-[var(--accent)] transition-all duration-100"
                 style={{
-                  width: `${Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      (Math.min(progressDay, draft.horizonDays) / Math.max(1, draft.horizonDays)) *
-                        100,
-                    ),
-                  )}%`,
+                  width: `${progressPct}%`,
                 }}
               />
             </div>
