@@ -3,6 +3,7 @@ import { LcgRng } from "../src/lib/sim/rng";
 import { sampleNormal, samplePoisson, sampleUniform } from "../src/lib/sim/distributions";
 import { validateScenario } from "../src/lib/validation/scenario";
 import { runSimulation } from "../src/lib/sim/engine";
+import { loadDatasets } from "../src/lib/data/csv";
 import type { ScenarioInput } from "../src/types/simulation";
 
 function approx(value: number, low: number, high: number) {
@@ -54,5 +55,24 @@ assert.ok(validateScenario({ ...base, global: { ...base.global, capacityMaxDevic
 const result = runSimulation(base);
 assert.equal(result.replicas.length, 30);
 assert.ok(result.summary.totalRevenue.mean > 0);
+assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci95Lower);
 
-console.log("All tests passed");
+const invalidRes = validateScenario({ ...base, global: { ...base.global, serviceTime: { kind: "uniform", a: 12, b: 10 } } });
+assert.ok(invalidRes.some((e) => e.field === "global.serviceTime"));
+
+async function main() {
+  const datasets = await loadDatasets();
+  assert.ok(datasets.localities.length > 0);
+  assert.ok(datasets.kiosks.length > 0);
+  assert.ok(datasets.kiosks.every((k) => k.latitud <= -26 && k.latitud >= -28));
+  assert.ok(datasets.kiosks.every((k) => k.longitud <= -65 && k.longitud >= -66));
+}
+
+main()
+  .then(() => {
+    console.log("All tests passed");
+  })
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });

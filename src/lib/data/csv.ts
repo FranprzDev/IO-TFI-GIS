@@ -18,13 +18,14 @@ export interface KioskRow {
 }
 
 function parseCsvLine(line: string): string[] {
+  const delimiter = line.includes(";") ? ";" : ",";
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') inQuotes = !inQuotes;
-    else if (ch === "," && !inQuotes) {
+    else if (ch === delimiter && !inQuotes) {
       out.push(cur.trim());
       cur = "";
     } else cur += ch;
@@ -33,8 +34,16 @@ function parseCsvLine(line: string): string[] {
   return out.map((x) => x.replace(/^"|"$/g, ""));
 }
 
-function parseNumber(raw: string): number {
-  const t = raw.replace(/\./g, "").replace(/,/g, ".").replace(/[^0-9.-]/g, "");
+function parseNumber(raw: string | undefined): number {
+  if (!raw) return 0;
+  const cleaned = raw.replace(/\s/g, "");
+  let normalized = cleaned;
+  if (cleaned.includes(".") && cleaned.includes(",")) {
+    normalized = cleaned.replace(/\./g, "").replace(/,/g, ".");
+  } else if (cleaned.includes(",")) {
+    normalized = cleaned.replace(/,/g, ".");
+  }
+  const t = normalized.replace(/[^0-9.-]/g, "");
   const n = Number(t);
   return Number.isFinite(n) ? n : 0;
 }
@@ -61,7 +70,7 @@ export async function loadDatasets() {
   });
 
   const kiosks: KioskRow[] = kiosLines.slice(1).map((line) => {
-    const [nombreSucursal, calle, cadena, latitudRaw, longitudRaw] = parseCsvLine(line);
+    const [nombreSucursal = "", calle = "", cadena = "", latitudRaw = "0", longitudRaw = "0"] = parseCsvLine(line);
     return {
       nombreSucursal,
       calle,
