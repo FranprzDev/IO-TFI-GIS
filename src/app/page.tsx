@@ -30,11 +30,26 @@ const baseDraft: Draft = { horizonDays: 180, replicas: 100, capacity: 100, servi
 export default function Home() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [conglomerates] = useState<Conglomerate[]>(DEFAULT_CONGLOMERATES);
-  const [draft, setDraft] = useState<Draft>(() => readScenarioDraft<Draft>() ?? baseDraft);
-  const [result, setResult] = useState<SimulationResult | null>(() => readLastResult());
-  const [historyCount, setHistoryCount] = useState(() => readHistory().length);
+  const [draft, setDraft] = useState<Draft>(baseDraft);
+  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [historyCount, setHistoryCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [progressDay, setProgressDay] = useState(0);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
+
+  useEffect(() => {
+    const savedDraft = readScenarioDraft<Draft>();
+    if (savedDraft) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDraft(savedDraft);
+    }
+    const savedResult = readLastResult();
+    if (savedResult) {
+      setResult(savedResult);
+    }
+    setHistoryCount(readHistory().length);
+  }, []);
 
   useEffect(() => {
     fetch("/api/bootstrap")
@@ -96,18 +111,33 @@ export default function Home() {
 
   const runSimulation = async () => {
     const input = buildInput();
-    const res = await fetch("/api/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
-    const data = await res.json();
-    if (!res.ok) {
-      setErrors((data.errors ?? []).map((e: { field: string; message: string }) => `${e.field}: ${e.message}`));
-      return;
+    const horizon = Math.max(1, input.global.horizonDays);
+    const step = Math.max(1, Math.ceil(horizon / 120));
+    setIsRunning(true);
+    setProgressDay(0);
+
+    const timer = setInterval(() => {
+      setProgressDay((prev) => Math.min(horizon - 1, prev + step));
+    }, 60);
+
+    try {
+      const res = await fetch("/api/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrors((data.errors ?? []).map((e: { field: string; message: string }) => `${e.field}: ${e.message}`));
+        return;
+      }
+      setErrors([]);
+      const simResult = data.result as SimulationResult;
+      saveHistoryEntry(simResult);
+      saveLastResult(simResult);
+      setHistoryCount(readHistory().length);
+      setResult(simResult);
+      setProgressDay(horizon);
+    } finally {
+      clearInterval(timer);
+      setTimeout(() => setIsRunning(false), 250);
     }
-    setErrors([]);
-    const simResult = data.result as SimulationResult;
-    saveHistoryEntry(simResult);
-    saveLastResult(simResult);
-    setHistoryCount(readHistory().length);
-    setResult(simResult);
   };
 
   const confirm = () => {
@@ -149,7 +179,7 @@ export default function Home() {
           </section>
 
           <section className="mt-4 space-y-2">
-            <button type="button" disabled={!valid} onClick={() => setModal({ open: true, action: "run" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">Ejecutar simulacion</button>
+            <button type="button" disabled={!valid || isRunning} onClick={() => setModal({ open: true, action: "run" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">Ejecutar simulacion</button>
             <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">Limpiar historial</button>
           </section>
 
@@ -161,7 +191,21 @@ export default function Home() {
         </aside>
 
         <main className="p-4">
-          <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm text-[var(--text-secondary)]">Mapa Leaflet de Tucuman. Click agrega un kiosko manual. Hover en marcador muestra calle + lat/lon.</div>
+          <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias)</span>
+              <span className="font-mono text-[var(--text-primary)]">{Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}</span>
+            </div>
+            <div className="h-3 w-full overflow-hidden rounded bg-[var(--btn-secondary)]">
+              <div
+                className="h-full bg-[var(--accent)] transition-all duration-100"
+                style={{ width: `${Math.max(0, Math.min(100, (Math.min(progressDay, draft.horizonDays) / Math.max(1, draft.horizonDays)) * 100))}%` }}
+              />
+            </div>
+            <div className="mt-2 text-xs text-[var(--text-secondary)]">
+              {isRunning ? "Ejecutando simulacion..." : "Listo para ejecutar"}
+            </div>
+          </div>
           <KioskLeafletMap kiosks={kiosks} onMapClick={onMapClick} />
 
           {errors.length > 0 && (
