@@ -1,0 +1,54 @@
+import type { Rng } from "./rng";
+
+export function sampleUniform(rng: Rng, a: number, b: number): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) {
+    throw new Error("Uniform requires finite a < b");
+  }
+  return a + (b - a) * rng.nextU01();
+}
+
+let spare: number | null = null;
+export function sampleNormal(rng: Rng, mu: number, sigma: number): number {
+  if (!Number.isFinite(mu) || !Number.isFinite(sigma) || sigma <= 0) {
+    throw new Error("Normal requires finite mu and sigma > 0");
+  }
+
+  if (spare !== null) {
+    const z = spare;
+    spare = null;
+    return mu + sigma * z;
+  }
+
+  let u = 0;
+  let v = 0;
+  let s = 0;
+  do {
+    u = 2 * rng.nextU01() - 1;
+    v = 2 * rng.nextU01() - 1;
+    s = u * u + v * v;
+  } while (s <= 0 || s >= 1);
+
+  const mul = Math.sqrt((-2 * Math.log(s)) / s);
+  spare = v * mul;
+  return mu + sigma * (u * mul);
+}
+
+export function samplePoisson(rng: Rng, lambda: number): number {
+  if (!Number.isFinite(lambda) || lambda <= 0) {
+    throw new Error("Poisson requires finite lambda > 0");
+  }
+
+  if (lambda < 30) {
+    const L = Math.exp(-lambda);
+    let p = 1;
+    let k = 0;
+    do {
+      k += 1;
+      p *= rng.nextU01();
+    } while (p > L);
+    return k - 1;
+  }
+
+  const normalApprox = Math.round(sampleNormal(rng, lambda, Math.sqrt(lambda)));
+  return Math.max(0, normalApprox);
+}
