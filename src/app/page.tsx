@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { HISTORY_KEY, readHistory, saveHistoryEntry } from "@/lib/storage/history";
+import { HISTORY_KEY, LAST_RESULT_A_KEY, LAST_RESULT_B_KEY, SCENARIO_A_KEY, SCENARIO_B_KEY, readHistory, readLastResult, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
 import type { Conglomerate, Kiosk, ScenarioInput, ScenarioKey, SimulationResult } from "@/types/simulation";
 
 const DEFAULT_CONGLOMERATES: Conglomerate[] = [
@@ -29,13 +29,13 @@ const baseDraft: Draft = { horizonDays: 180, replicas: 100, capacity: 100, servi
 export default function Home() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [conglomerates] = useState<Conglomerate[]>(DEFAULT_CONGLOMERATES);
-  const [draftA, setDraftA] = useState<Draft>(baseDraft);
-  const [draftB, setDraftB] = useState<Draft>({ ...baseDraft, acquisitionPrice: 7000, operationCost: 25 });
-  const [resultA, setResultA] = useState<SimulationResult | null>(null);
-  const [resultB, setResultB] = useState<SimulationResult | null>(null);
+  const [draftA, setDraftA] = useState<Draft>(() => readScenarioDraft<Draft>("A") ?? baseDraft);
+  const [draftB, setDraftB] = useState<Draft>(() => readScenarioDraft<Draft>("B") ?? { ...baseDraft, acquisitionPrice: 7000, operationCost: 25 });
+  const [resultA, setResultA] = useState<SimulationResult | null>(() => readLastResult("A"));
+  const [resultB, setResultB] = useState<SimulationResult | null>(() => readLastResult("B"));
   const [historyCount, setHistoryCount] = useState(() => readHistory().length);
   const [errors, setErrors] = useState<string[]>([]);
-  const [modal, setModal] = useState<{ open: boolean; action: "runA" | "runB" | "compare" | "clear" | null }>({ open: false, action: null });
+  const [modal, setModal] = useState<{ open: boolean; action: "runA" | "runB" | "compare" | "clear" | "exportJson" | "exportCsv" | null }>({ open: false, action: null });
 
   useEffect(() => {
     fetch("/api/bootstrap").then((r) => r.json()).then((data) => {
@@ -52,6 +52,14 @@ export default function Home() {
     }).catch(() => undefined);
 
   }, []);
+
+  useEffect(() => {
+    saveScenarioDraft("A", draftA);
+  }, [draftA]);
+
+  useEffect(() => {
+    saveScenarioDraft("B", draftB);
+  }, [draftB]);
 
   const valid = useMemo(() => {
     const d = draftA;
@@ -106,6 +114,7 @@ export default function Home() {
     setErrors([]);
     const result = data.result as SimulationResult;
     saveHistoryEntry(result);
+    saveLastResult(scenario, result);
     setHistoryCount(readHistory().length);
     if (scenario === "A") setResultA(result);
     else setResultB(result);
@@ -132,8 +141,51 @@ export default function Home() {
     if (action === "compare") compare();
     if (action === "clear") {
       window.localStorage.removeItem(HISTORY_KEY);
+      window.localStorage.removeItem(SCENARIO_A_KEY);
+      window.localStorage.removeItem(SCENARIO_B_KEY);
+      window.localStorage.removeItem(LAST_RESULT_A_KEY);
+      window.localStorage.removeItem(LAST_RESULT_B_KEY);
       setHistoryCount(0);
+      setResultA(null);
+      setResultB(null);
+      setDraftA(baseDraft);
+      setDraftB({ ...baseDraft, acquisitionPrice: 7000, operationCost: 25 });
     }
+    if (action === "exportJson") exportJson();
+    if (action === "exportCsv") exportCsv();
+  };
+
+  const exportJson = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      scenarioA: resultA,
+      scenarioB: resultB,
+      history: readHistory(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ecoatm-simulation-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCsv = () => {
+    const rows: string[] = ["scenario,margin_mean,revenue_mean,cost_mean,devices_mean,amortization_days_mean,feasible_probability"];
+    if (resultA) {
+      rows.push(`A,${resultA.summary.totalMargin.mean.toFixed(2)},${resultA.summary.totalRevenue.mean.toFixed(2)},${resultA.summary.totalCost.mean.toFixed(2)},${resultA.summary.totalDevices.mean.toFixed(2)},${resultA.summary.amortizationDays.mean.toFixed(2)},${resultA.summary.feasibleProbability.toFixed(4)}`);
+    }
+    if (resultB) {
+      rows.push(`B,${resultB.summary.totalMargin.mean.toFixed(2)},${resultB.summary.totalRevenue.mean.toFixed(2)},${resultB.summary.totalCost.mean.toFixed(2)},${resultB.summary.totalDevices.mean.toFixed(2)},${resultB.summary.amortizationDays.mean.toFixed(2)},${resultB.summary.feasibleProbability.toFixed(4)}`);
+    }
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ecoatm-simulation-export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -167,6 +219,8 @@ export default function Home() {
             <button type="button" disabled={!valid} onClick={() => setModal({ open: true, action: "runA" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">Ejecutar Simulacion A</button>
             <button type="button" disabled={!valid} onClick={() => setModal({ open: true, action: "runB" })} className="w-full rounded bg-[var(--btn-secondary)] px-3 py-2">Ejecutar Simulacion B</button>
             <button type="button" onClick={() => setModal({ open: true, action: "compare" })} className="w-full rounded bg-[var(--btn-secondary)] px-3 py-2">Comparar</button>
+            <button type="button" onClick={() => setModal({ open: true, action: "exportJson" })} className="w-full rounded bg-[var(--btn-secondary)] px-3 py-2">Exportar JSON</button>
+            <button type="button" onClick={() => setModal({ open: true, action: "exportCsv" })} className="w-full rounded bg-[var(--btn-secondary)] px-3 py-2">Exportar CSV</button>
             <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">Limpiar Historial</button>
           </section>
 
