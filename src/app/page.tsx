@@ -38,7 +38,6 @@ export default function Home() {
   const [errors, setErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
-  const [progressReplica, setProgressReplica] = useState(0);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
 
   useEffect(() => {
@@ -121,23 +120,19 @@ export default function Home() {
     }
 
     const totalDays = Math.max(1, input.global.horizonDays);
-    const totalReplicas = Math.max(1, input.global.replicas);
     setIsRunning(true);
     setProgressDay(0);
-    setProgressReplica(0);
 
     try {
       setErrors([]);
       // Run the simulator locally and expose true execution progress (replica/day).
-      const simResult = runSimulationWithProgress(input, ({ replica, day }) => {
-        setProgressReplica(replica);
+      const simResult = runSimulationWithProgress(input, ({ day }) => {
         setProgressDay(day);
       }) as SimulationResult;
       saveHistoryEntry(simResult);
       saveLastResult(simResult);
       setHistoryCount(readHistory().length);
       setResult(simResult);
-      setProgressReplica(totalReplicas);
       setProgressDay(totalDays);
     } finally {
       setTimeout(() => setIsRunning(false), 250);
@@ -199,7 +194,7 @@ export default function Home() {
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias reales)</span>
               <span className="font-mono text-[var(--text-primary)]">
-                Replica {Math.min(progressReplica, draft.replicas)} / {draft.replicas} | Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
+                Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
               </span>
             </div>
             <div className="h-3 w-full overflow-hidden rounded bg-[var(--btn-secondary)]">
@@ -210,8 +205,7 @@ export default function Home() {
                     0,
                     Math.min(
                       100,
-                      (((Math.max(0, Math.min(progressReplica - 1, draft.replicas - 1)) * Math.max(1, draft.horizonDays)) + Math.min(progressDay, draft.horizonDays)) /
-                        Math.max(1, draft.replicas * draft.horizonDays)) *
+                      (Math.min(progressDay, draft.horizonDays) / Math.max(1, draft.horizonDays)) *
                         100,
                     ),
                   )}%`,
