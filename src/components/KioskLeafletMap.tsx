@@ -20,13 +20,21 @@ function ClickHandler({ onMapClick }: { onMapClick: (lat: number, lon: number) =
   return null;
 }
 
-export function KioskLeafletMap({ kiosks, onMapClick }: { kiosks: Kiosk[]; onMapClick: (lat: number, lon: number) => void }) {
+export function KioskLeafletMap({
+  kiosks,
+  onMapClick,
+  className,
+}: {
+  kiosks: Kiosk[];
+  onMapClick: (lat: number, lon: number) => void;
+  className?: string;
+}) {
   return (
     <MapContainer
       center={[-26.83, -65.22]}
       zoom={11}
       scrollWheelZoom
-      className="h-[520px] w-full rounded-xl border border-[var(--border)]"
+      className={className ?? "h-[520px] w-full rounded-xl border border-[var(--border)]"}
       maxBounds={[
         [-28.2, -66.2],
         [-25.8, -64.8],

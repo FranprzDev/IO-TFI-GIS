@@ -39,6 +39,7 @@ export default function Home() {
   const [isRunning, setIsRunning] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
   const [progressReplica, setProgressReplica] = useState(0);
+  const [showResultModal, setShowResultModal] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
 
   useEffect(() => {
@@ -125,6 +126,7 @@ export default function Home() {
     setIsRunning(true);
     setProgressDay(0);
     setProgressReplica(0);
+    setShowResultModal(false);
 
     try {
       setErrors([]);
@@ -139,6 +141,7 @@ export default function Home() {
       setResult(simResult);
       setProgressReplica(totalReplicas);
       setProgressDay(totalDays);
+      setShowResultModal(true);
     } finally {
       setTimeout(() => setIsRunning(false), 250);
     }
@@ -168,6 +171,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <ConfirmModal open={modal.open} title="Estas seguro?" onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
+      <ResultModal open={showResultModal} result={result} onClose={() => setShowResultModal(false)} />
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[360px_1fr]">
         <aside className="border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
           <h1 className="text-xl font-bold">Simulador ecoATM</h1>
@@ -201,7 +205,7 @@ export default function Home() {
           </section>
         </aside>
 
-        <main className="p-4">
+        <main className="flex min-h-screen flex-col p-4">
           <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Progreso de simulacion (dias reales)</span>
@@ -221,37 +225,40 @@ export default function Home() {
               {isRunning ? "Ejecutando simulacion..." : "Listo para ejecutar"}
             </div>
           </div>
-          <KioskLeafletMap kiosks={kiosks} onMapClick={onMapClick} />
+          <div className="min-h-0 flex-1">
+            <KioskLeafletMap kiosks={kiosks} onMapClick={onMapClick} className="h-full w-full rounded-xl border border-[var(--border)]" />
+          </div>
 
           {errors.length > 0 && (
             <div className="mt-4 rounded border border-red-500/60 bg-red-500/10 p-3 text-sm text-red-200">
               {errors.map((e) => <div key={e}>{e}</div>)}
             </div>
           )}
-
-          <div className="mt-4">
-            <ResultCard title="Resultado simulacion" result={result} />
-          </div>
         </main>
       </div>
     </div>
   );
 }
 
-function ResultCard({ title, result }: { title: string; result: SimulationResult | null }) {
+function ResultModal({ open, result, onClose }: { open: boolean; result: SimulationResult | null; onClose: () => void }) {
+  if (!open || !result) return null;
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-      <h3 className="font-semibold">{title}</h3>
-      {!result && <p className="mt-2 text-sm text-[var(--text-secondary)]">Sin corrida todavia.</p>}
-      {result && (
-        <div className="mt-2 space-y-1 text-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-6 text-[var(--text-primary)]">
+        <div className="flex items-start justify-between gap-4">
+          <h3 className="text-lg font-semibold">Resultado simulacion</h3>
+          <button type="button" onClick={onClose} className="rounded-md border border-[var(--border)] px-3 py-1 text-sm">
+            Cerrar
+          </button>
+        </div>
+        <div className="mt-4 space-y-2 text-sm">
           <p>Margen promedio: {result.summary.totalMargin.mean.toFixed(2)}</p>
           <p>IC95 margen: [{result.summary.totalMargin.ci95Lower.toFixed(2)}, {result.summary.totalMargin.ci95Upper.toFixed(2)}]</p>
           <p>Amortizacion promedio (dias): {result.summary.amortizationDays.mean.toFixed(0)}</p>
           <p>Prob. factible: {(result.summary.feasibleProbability * 100).toFixed(1)}%</p>
           {result.warnings.length > 0 && <p className="text-amber-300">{result.warnings[0]}</p>}
         </div>
-      )}
+      </div>
     </div>
   );
 }
