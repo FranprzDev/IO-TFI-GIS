@@ -48,3 +48,14 @@ Este archivo documenta decisiones tomadas durante la implementacion, dudas resue
 - Persistir escenarios A/B completos y restaurarlos automaticamente al abrir la app.
 - Exportar resultados a CSV/JSON desde UI.
 - Tests de UI end-to-end.
+
+## Actualizacion de cierre (iteracion final)
+
+- Se implemento persistencia y restauracion automatica de drafts de escenario A/B en localStorage.
+- Se implemento persistencia de ultima corrida por escenario (A/B).
+- Se agrego exportacion JSON y CSV desde UI, ambas protegidas por modal de confirmacion.
+- Se elimino el borrado global de localStorage y se usa limpieza por claves del simulador.
+- Se amplió test funcional para validar:
+  - consistencia de IC en salida de simulacion,
+  - rechazo de Uniforme invalida (`a >= b`),
+  - carga real de datasets CSV y rango geografico de kioskos.
