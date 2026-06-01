@@ -17,6 +17,7 @@ export interface Conglomerate {
 export interface Kiosk {
   id: string;
   nombre: string;
+  calle: string;
   conglomerateId: string;
   lat: number;
   lon: number;

@@ -1,10 +1,8 @@
 import type { HistoryEntry, SimulationResult } from "@/types/simulation";
 
 export const HISTORY_KEY = "ecoatm_sim_history_v1";
-export const SCENARIO_A_KEY = "ecoatm_sim_scenario_A_v1";
-export const SCENARIO_B_KEY = "ecoatm_sim_scenario_B_v1";
-export const LAST_RESULT_A_KEY = "ecoatm_sim_last_result_A_v1";
-export const LAST_RESULT_B_KEY = "ecoatm_sim_last_result_B_v1";
+export const SCENARIO_KEY = "ecoatm_sim_scenario_main_v1";
+export const LAST_RESULT_KEY = "ecoatm_sim_last_result_main_v1";
 
 export function readHistory(): HistoryEntry[] {
   if (typeof window === "undefined") return [];
@@ -37,16 +35,14 @@ export function saveHistoryEntry(result: SimulationResult): void {
   }
 }
 
-export function saveScenarioDraft<T>(scenario: "A" | "B", draft: T): void {
+export function saveScenarioDraft<T>(draft: T): void {
   if (typeof window === "undefined") return;
-  const key = scenario === "A" ? SCENARIO_A_KEY : SCENARIO_B_KEY;
-  window.localStorage.setItem(key, JSON.stringify(draft));
+  window.localStorage.setItem(SCENARIO_KEY, JSON.stringify(draft));
 }
 
-export function readScenarioDraft<T>(scenario: "A" | "B"): T | null {
+export function readScenarioDraft<T>(): T | null {
   if (typeof window === "undefined") return null;
-  const key = scenario === "A" ? SCENARIO_A_KEY : SCENARIO_B_KEY;
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(SCENARIO_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
@@ -55,16 +51,14 @@ export function readScenarioDraft<T>(scenario: "A" | "B"): T | null {
   }
 }
 
-export function saveLastResult(scenario: "A" | "B", result: SimulationResult): void {
+export function saveLastResult(result: SimulationResult): void {
   if (typeof window === "undefined") return;
-  const key = scenario === "A" ? LAST_RESULT_A_KEY : LAST_RESULT_B_KEY;
-  window.localStorage.setItem(key, JSON.stringify(result));
+  window.localStorage.setItem(LAST_RESULT_KEY, JSON.stringify(result));
 }
 
-export function readLastResult(scenario: "A" | "B"): SimulationResult | null {
+export function readLastResult(): SimulationResult | null {
   if (typeof window === "undefined") return null;
-  const key = scenario === "A" ? LAST_RESULT_A_KEY : LAST_RESULT_B_KEY;
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(LAST_RESULT_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as SimulationResult;
