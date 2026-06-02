@@ -42,6 +42,8 @@ interface BootstrapData {
   localityPoints: Array<{ id: string; nombre: string; departamento: string; latitud: number; longitud: number; poblacion2022: number; densidad: number; source: string }>;
 }
 
+type SidebarTab = "simulation" | "optimization" | "settings";
+
 const baseDraft: Draft = {
   horizonDays: 180,
   capacity: 100,
@@ -68,6 +70,7 @@ export default function Home() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [demandZones, setDemandZones] = useState<DemandZone[]>([]);
   const [draft, setDraft] = useState<Draft>(baseDraft);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("simulation");
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
   const [historyCount, setHistoryCount] = useState(0);
@@ -367,32 +370,102 @@ export default function Home() {
           <h1 className="text-xl font-bold">Simulador ecoATM</h1>
           <p className="text-sm text-[var(--text-secondary)]">Voronoi + optimizacion heuristica sobre kioskos CSV y manuales.</p>
 
-          <section className="mt-4 space-y-3">
-            <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Simulacion</h2>
-            <NumberField label="Horizonte (dias)" value={draft.horizonDays} min={1} max={3650} onChange={(value) => setDraft({ ...draft, horizonDays: value })} />
-            <NumberField label="Capacidad por kiosko" value={draft.capacity} min={1} max={1000} onChange={(value) => setDraft({ ...draft, capacity: value })} />
-            <NumberField label="Precio por kiosko" value={draft.acquisitionPrice} min={0} max={100000} onChange={(value) => setDraft({ ...draft, acquisitionPrice: value })} />
-            <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
+          <section className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-1">
+            <div className="grid grid-cols-3 gap-1">
+              <TabButton active={sidebarTab === "simulation"} onClick={() => setSidebarTab("simulation")}>
+                Simulacion
+              </TabButton>
+              <TabButton active={sidebarTab === "settings"} onClick={() => setSidebarTab("settings")} icon={<GearIcon />}>
+                Configuracion
+              </TabButton>
+              <TabButton active={sidebarTab === "optimization"} onClick={() => setSidebarTab("optimization")}>
+                Optimizacion
+              </TabButton>
+            </div>
           </section>
 
-          <section className="mt-4 space-y-3">
-            <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Optimizacion</h2>
-            <NumberField label="Min kioskos" value={draft.minSites} min={1} max={20} onChange={(value) => setDraft({ ...draft, minSites: value })} />
-            <NumberField label="Max kioskos" value={draft.maxSites} min={draft.minSites} max={20} onChange={(value) => setDraft({ ...draft, maxSites: value })} />
-            <NumberField label="Budget cap" value={draft.budgetCap} min={0} max={10000000} onChange={(value) => setDraft({ ...draft, budgetCap: value })} />
-            <p className="text-xs text-[var(--text-secondary)]">Score balanceado: margen 30%, demanda capturada 20%, cobertura 20%, balance 15%, canibalizacion 15%.</p>
-          </section>
+          <section className="mt-4">
+            {sidebarTab === "simulation" && (
+              <div className="space-y-3">
+                <p className="text-sm text-[var(--text-secondary)]">Corridas directas del escenario cargado.</p>
+                <button type="button" disabled={!valid || isRunning || activeKiosks.length === 0} onClick={() => setModal({ open: true, action: "run" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">
+                  Ejecutar simulacion
+                </button>
+                <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">
+                  Limpiar historial
+                </button>
+                <div className="rounded border border-[var(--border)] p-3 text-sm">
+                  <p>Candidatos: {kiosks.length}</p>
+                  <p>Activos: {activeKiosks.length}</p>
+                  <p>Zonas de demanda: {demandZones.length}</p>
+                  <p>Historial: {historyCount}</p>
+                </div>
+              </div>
+            )}
 
-          <section className="mt-4 space-y-2">
-            <button type="button" disabled={!valid || isRunning || activeKiosks.length === 0} onClick={() => setModal({ open: true, action: "run" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">
-              Ejecutar simulacion
-            </button>
-            <button type="button" disabled={!valid || isOptimizing || kiosks.length === 0 || demandZones.length === 0} onClick={() => setModal({ open: true, action: "optimize" })} className="w-full rounded bg-[var(--accent)] px-3 py-2 font-semibold text-black disabled:opacity-40">
-              Optimizar red
-            </button>
-            <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">
-              Limpiar historial
-            </button>
+            {sidebarTab === "optimization" && (
+              <div className="space-y-3">
+                <p className="text-sm text-[var(--text-secondary)]">Busqueda de la mejor configuracion factible.</p>
+                <button type="button" disabled={!valid || isOptimizing || kiosks.length === 0 || demandZones.length === 0} onClick={() => setModal({ open: true, action: "optimize" })} className="w-full rounded bg-[var(--accent)] px-3 py-2 font-semibold text-black disabled:opacity-40">
+                  Optimizar red
+                </button>
+                <p className="text-xs text-[var(--text-secondary)]">Score balanceado: margen 30%, demanda capturada 20%, cobertura 20%, balance 15%, canibalizacion 15%.</p>
+                <div className="rounded border border-[var(--border)] p-3 text-sm">
+                  <p>Min kioskos: {draft.minSites}</p>
+                  <p>Max kioskos: {draft.maxSites}</p>
+                  <p>Budget cap: {draft.budgetCap > 0 ? draft.budgetCap : "Sin tope"}</p>
+                </div>
+              </div>
+            )}
+
+            {sidebarTab === "settings" && (
+              <div className="space-y-4">
+                <p className="text-sm text-[var(--text-secondary)]">Parametros compartidos por simulacion y optimizacion.</p>
+                <section className="space-y-3 rounded border border-[var(--border)] p-3">
+                  <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Parametros base</h2>
+                  <NumberField label="Horizonte (dias)" value={draft.horizonDays} min={1} max={3650} onChange={(value) => setDraft({ ...draft, horizonDays: value })} />
+                  <NumberField label="Capacidad por kiosko" value={draft.capacity} min={1} max={1000} onChange={(value) => setDraft({ ...draft, capacity: value })} />
+                  <NumberField label="Precio por kiosko" value={draft.acquisitionPrice} min={0} max={100000} onChange={(value) => setDraft({ ...draft, acquisitionPrice: value })} />
+                  <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
+                </section>
+
+                <section className="space-y-3 rounded border border-[var(--border)] p-3">
+                  <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Distribuciones</h2>
+                  <DistributionField
+                    title="Tiempo de servicio"
+                    distribution="Uniforme"
+                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+                  >
+                    <NumberField label="Tiempo servicio min A" value={draft.serviceMinA} min={0} max={120} onChange={(value) => setDraft({ ...draft, serviceMinA: value })} disabled />
+                    <NumberField label="Tiempo servicio min B" value={draft.serviceMinB} min={draft.serviceMinA + 1} max={240} onChange={(value) => setDraft({ ...draft, serviceMinB: value })} disabled />
+                  </DistributionField>
+                  <DistributionField
+                    title="Valor de dispositivo"
+                    distribution="Normal"
+                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+                  >
+                    <NumberField label="Valor mu" value={draft.valueMu} min={0} max={1000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
+                    <NumberField label="Valor sigma" value={draft.valueSigma} min={1} max={1000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
+                  </DistributionField>
+                  <DistributionField
+                    title="Demanda total"
+                    distribution="Normal"
+                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+                  >
+                    <NumberField label="Demanda total mu" value={draft.totalDemandMu} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandMu: value })} disabled />
+                    <NumberField label="Demanda total sigma" value={draft.totalDemandSigma} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandSigma: value })} disabled />
+                  </DistributionField>
+                  <NumberField label="Costo operativo" value={draft.operationCost} min={0} max={1000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
+                </section>
+
+                <section className="space-y-3 rounded border border-[var(--border)] p-3">
+                  <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Restricciones</h2>
+                  <NumberField label="Min kioskos" value={draft.minSites} min={1} max={20} onChange={(value) => setDraft({ ...draft, minSites: value })} />
+                  <NumberField label="Max kioskos" value={draft.maxSites} min={draft.minSites} max={20} onChange={(value) => setDraft({ ...draft, maxSites: value })} />
+                  <NumberField label="Budget cap" value={draft.budgetCap} min={0} max={10000000} onChange={(value) => setDraft({ ...draft, budgetCap: value })} />
+                </section>
+              </div>
+            )}
           </section>
 
           <section className="mt-4 text-sm">
@@ -472,26 +545,95 @@ function NumberField({
   min,
   max,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="block text-sm">
+    <label className={`block text-sm ${disabled ? "opacity-70" : ""}`}>
       {label}
       <input
         type="number"
         min={min}
         max={max}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1 w-full rounded border border-[var(--border)] bg-transparent px-2 py-1"
+        className="mt-1 w-full rounded border border-[var(--border)] bg-transparent px-2 py-1 disabled:cursor-not-allowed disabled:opacity-60"
         required
       />
     </label>
+  );
+}
+
+function DistributionField({
+  title,
+  distribution,
+  tooltip,
+  children,
+}: {
+  title: string;
+  distribution: string;
+  tooltip: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium">{title}</span>
+        <span
+          title={tooltip}
+          className="inline-flex cursor-help items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--btn-secondary)] px-2 py-0.5 text-xs text-[var(--text-secondary)]"
+        >
+          {distribution}
+          <span aria-hidden="true" className="text-[10px]">
+            i
+          </span>
+        </span>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "bg-[var(--btn-active)] text-[var(--text-primary)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--btn-secondary)] hover:text-[var(--text-primary)]"
+      }`}
+    >
+      {icon}
+      <span>{children}</span>
+    </button>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.25 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
   );
 }
 
