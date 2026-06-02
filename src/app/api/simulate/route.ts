@@ -35,7 +35,8 @@ export async function POST(req: Request) {
         });
 
         // Strip replicas array before sending — the summary has everything the UI needs.
-        const { replicas: _dropped, ...slim } = result;
+        const slim = { ...result };
+        delete slim.replicas;
         send("result", { ok: true, result: slim });
       } catch (err) {
         send("error", { ok: false, message: String(err) });

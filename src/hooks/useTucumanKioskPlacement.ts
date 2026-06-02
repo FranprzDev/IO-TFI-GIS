@@ -25,10 +25,12 @@ export function useTucumanKioskPlacement(
           nombre: `Kiosko manual ${prev.length + 1}`,
           calle: "Punto manual",
           chain: "Gobierno",
-          conglomerateId: prev.length % 2 === 0 ? "cg-1" : "cg-2",
           lat,
           lon,
           acquisitionPrice,
+          source: "manual",
+          active: true,
+          attractivenessWeight: 1,
         },
       ]);
       setPlacementError(null);

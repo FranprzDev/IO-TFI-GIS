@@ -125,6 +125,7 @@ export interface SpatialMetrics {
   incrementalDemandPct: number;
   assignments: SpatialAssignment[];
   voronoiCells: VoronoiCell[];
+  demandByKiosk?: Record<string, { kioskId: string; assignedDemand: number; effectiveDemand: number; assignmentCount: number }>;
 }
 
 export interface SimulationResult {

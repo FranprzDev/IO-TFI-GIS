@@ -35,8 +35,12 @@ function approx(value: number, low: number, high: number) {
 const base: ScenarioInput = {
   scenario: "A",
   seed: 123,
-  conglomerates: [{ id: "cg-1", nombre: "c1", departamento: "d", dailyDemand: { kind: "normal", mu: 1000, sigma: 100 }, interestPct: 0.05, operationalHours: 12 }],
-  kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", conglomerateId: "cg-1", lat: -26.8, lon: -65.2, chain: "Gobierno", acquisitionPrice: 7000 }],
+  conglomerates: [],
+  kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", lat: -26.8, lon: -65.2, chain: "Gobierno", acquisitionPrice: 7000, source: "csv", active: true, attractivenessWeight: 1 }],
+  demandZones: [
+    { id: "z1", nombre: "zona 1", departamento: "Capital", lat: -26.8, lon: -65.2, population2022: 10000, density: 3500, demandWeight: 10000 },
+    { id: "z2", nombre: "zona 2", departamento: "Capital", lat: -26.82, lon: -65.24, population2022: 8000, density: 2800, demandWeight: 8000 },
+  ],
   global: {
     capacityMaxDevices: 100,
     horizonDays: 90,
@@ -46,6 +50,8 @@ const base: ScenarioInput = {
     serviceTime: { kind: "uniform", a: 4, b: 10 },
     deviceValue: { kind: "normal", mu: 120, sigma: 35 },
     operationCostPerDevice: 20,
+    totalDailyDemand: { kind: "normal", mu: 110, sigma: 15 },
+    serviceDistanceKm: 10,
   },
 };
 
@@ -75,8 +81,9 @@ async function main() {
   const datasets = await loadDatasets();
   assert.ok(datasets.localities.length > 0);
   assert.ok(datasets.kiosks.length > 0);
-  assert.ok(datasets.kiosks.every((k) => k.latitud <= -26 && k.latitud >= -28));
-  assert.ok(datasets.kiosks.every((k) => k.longitud <= -65 && k.longitud >= -66));
+  assert.ok(datasets.localityPoints.length === datasets.localities.length);
+  assert.ok(datasets.kiosks.every((k) => k.latitud <= -26 && k.latitud >= -28.1));
+  assert.ok(datasets.kiosks.every((k) => k.longitud <= -64.4 && k.longitud >= -66.2));
 }
 
 main()

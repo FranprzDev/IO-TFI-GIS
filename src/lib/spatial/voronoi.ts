@@ -19,6 +19,7 @@ export interface ProjectedPoint {
 export interface KioskDemandSummary {
   kioskId: string;
   assignedDemand: number;
+  effectiveDemand: number;
   assignmentCount: number;
 }
 
@@ -100,6 +101,7 @@ export function buildSpatialSnapshot(
   let totalWeight = 0;
   let coveredWeight = 0;
   let weightedDistanceKm = 0;
+  let contestedWeight = 0;
 
   for (const { zone } of projectedDemandZones) {
     totalWeight += toDemandWeight(zone);
@@ -110,6 +112,10 @@ export function buildSpatialSnapshot(
     const nearest = projectedKiosks[nearestIndex];
     const distanceKm = haversineKm({ lat: zone.lat, lon: zone.lon }, { lat: nearest.kiosk.lat, lon: nearest.kiosk.lon });
     const weight = toDemandWeight(zone);
+    const secondNearestDistanceKm = projectedKiosks
+      .filter((_, index) => index !== nearestIndex)
+      .map(({ kiosk }) => haversineKm({ lat: zone.lat, lon: zone.lon }, { lat: kiosk.lat, lon: kiosk.lon }))
+      .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
 
     assignments.push({
       demandZoneId: zone.id,
@@ -120,18 +126,23 @@ export function buildSpatialSnapshot(
 
     weightedDistanceKm += distanceKm * weight;
     if (distanceKm <= serviceDistanceKm) coveredWeight += weight;
+    if (secondNearestDistanceKm <= distanceKm * 1.35 || (secondNearestDistanceKm - distanceKm) <= 1.5) {
+      contestedWeight += weight;
+    }
 
     const current = demandByKiosk.get(nearest.kiosk.id) ?? {
       kioskId: nearest.kiosk.id,
       assignedDemand: 0,
+      effectiveDemand: 0,
       assignmentCount: 0,
     };
     current.assignedDemand += weight;
+    current.effectiveDemand += weight * nearest.kiosk.attractivenessWeight;
     current.assignmentCount += 1;
     demandByKiosk.set(nearest.kiosk.id, current);
   }
 
-  const kioskDemandList = activeKiosks.map((k) => demandByKiosk.get(k.id)?.assignedDemand ?? 0);
+  const kioskDemandList = activeKiosks.map((k) => demandByKiosk.get(k.id)?.effectiveDemand ?? 0);
   const meanDemand = kioskDemandList.reduce((sum, value) => sum + value, 0) / Math.max(1, kioskDemandList.length);
   const demandVariance = kioskDemandList.reduce((sum, value) => sum + (value - meanDemand) ** 2, 0) / Math.max(1, kioskDemandList.length);
   const demandStdDev = Math.sqrt(demandVariance);
@@ -150,29 +161,10 @@ export function buildSpatialSnapshot(
     coveredDemandPct: totalWeight > 0 ? coveredWeight / totalWeight : 0,
     capturedDemand: totalWeight,
     loadBalanceScore,
-    cannibalizationPct: 0,
-    incrementalDemandPct: 1,
+    cannibalizationPct: totalWeight > 0 ? contestedWeight / totalWeight : 0,
+    incrementalDemandPct: totalWeight > 0 ? 1 - (contestedWeight / totalWeight) : 0,
     assignments,
     voronoiCells,
     demandByKiosk: Object.fromEntries(Array.from(demandByKiosk.entries())),
   };
-}
-
-export function estimateCannibalizationPct(kiosks: Kiosk[], demandZones: DemandZone[]): number {
-  const activeKiosks = kiosks.filter((k) => k.active !== false);
-  if (activeKiosks.length <= 1) return 0;
-
-  let replacedWeight = 0;
-  let totalWeight = 0;
-
-  for (const kiosk of activeKiosks) {
-    const scenarioWithKiosk = buildSpatialSnapshot(activeKiosks, demandZones, Number.POSITIVE_INFINITY);
-    const withoutKiosk = buildSpatialSnapshot(activeKiosks.filter((candidate) => candidate.id !== kiosk.id), demandZones, Number.POSITIVE_INFINITY);
-    const withDemand = scenarioWithKiosk.demandByKiosk[kiosk.id]?.assignedDemand ?? 0;
-    const withoutDemand = withoutKiosk.capturedDemand;
-    replacedWeight += Math.max(0, scenarioWithKiosk.capturedDemand - withoutDemand - withDemand);
-    totalWeight += withDemand;
-  }
-
-  return totalWeight > 0 ? Math.min(1, Math.max(0, replacedWeight / totalWeight)) : 0;
 }

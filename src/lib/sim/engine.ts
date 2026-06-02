@@ -20,10 +20,10 @@ function* simulateReplica(
   const sampleNormal = createNormalSampler();
   const activeKiosks = input.kiosks.filter((k) => k.active !== false);
   const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm);
-  const totalDemandWeight = Object.values(spatial.demandByKiosk).reduce((sum, item) => sum + item.assignedDemand, 0);
+  const totalDemandWeight = Object.values(spatial.demandByKiosk).reduce((sum, item) => sum + item.effectiveDemand, 0);
   const demandShareByKiosk = new Map(
     activeKiosks.map((kiosk) => {
-      const assignedDemand = spatial.demandByKiosk[kiosk.id]?.assignedDemand ?? 0;
+      const assignedDemand = spatial.demandByKiosk[kiosk.id]?.effectiveDemand ?? 0;
       const share = totalDemandWeight > 0 ? assignedDemand / totalDemandWeight : 0;
       return [kiosk.id, share];
     }),
@@ -156,7 +156,7 @@ class SimAccumulator {
     if (r.feasible) this.feasibleCount++;
   }
 
-  summarize(input: ScenarioInput): SimulationResult["summary"] {
+  summarize(): SimulationResult["summary"] {
     const s = (stat: OnlineStat) => {
       const c = stat.ci95();
       return { mean: stat.mean, ci95Lower: c.lower, ci95Upper: c.upper };
@@ -203,7 +203,7 @@ export function runSimulationWithProgress(
     timestamp: new Date().toISOString(),
     input,
     replicas: replicaResults,
-    summary: acc.summarize(input),
+    summary: acc.summarize(),
     warnings: overConfigWarnings(input),
     spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
   };
@@ -238,7 +238,7 @@ export async function runSimulationAsync(
     timestamp: new Date().toISOString(),
     input,
     replicas: [],
-    summary: acc.summarize(input),
+    summary: acc.summarize(),
     warnings: overConfigWarnings(input),
     spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
   };
