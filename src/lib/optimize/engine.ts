@@ -30,7 +30,7 @@ function invertedNormalize(value: number, min: number, max: number): number {
   return 1 - normalize(value, min, max);
 }
 
-function buildScenarioInput(request: OptimizationRequest, selectedIds: Set<string>, replicasOverride?: number): ScenarioInput {
+function buildScenarioInput(request: OptimizationRequest, selectedIds: Set<string>): ScenarioInput {
   return {
     scenario: "A",
     seed: request.seed,
@@ -39,7 +39,6 @@ function buildScenarioInput(request: OptimizationRequest, selectedIds: Set<strin
     demandZones: request.demandZones,
     global: {
       ...request.global,
-      replicas: replicasOverride ?? request.global.replicas,
       serviceTime: request.serviceTime,
       deviceValue: request.deviceValue,
       operationCostPerDevice: request.operationCostPerDevice,
@@ -47,8 +46,17 @@ function buildScenarioInput(request: OptimizationRequest, selectedIds: Set<strin
   };
 }
 
-function evaluateScenario(request: OptimizationRequest, selectedIds: Set<string>, replicasOverride?: number): SimulationResult {
-  return runSimulation(buildScenarioInput(request, selectedIds, replicasOverride), { includeReplicas: false });
+function evaluateScenario(
+  request: OptimizationRequest,
+  selectedIds: Set<string>,
+  includeSpatialCells = false,
+): SimulationResult {
+  return runSimulation(buildScenarioInput(request, selectedIds), { includeSpatialCells });
+}
+
+/** Yield to the event loop so Node can GC and flush SSE progress between batches. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function scoreScenario(
@@ -107,7 +115,7 @@ function evaluateForScoreBounds(request: OptimizationRequest): {
   weightedDistanceKm: { min: number; max: number };
 } {
   const allActive = new Set(request.kiosks.map((kiosk) => kiosk.id));
-  const allResult = evaluateScenario(request, allActive, Math.min(request.global.replicas, 12));
+  const allResult = evaluateScenario(request, allActive);
 
   let minMargin = allResult.summary.totalMargin.mean;
   let maxMargin = allResult.summary.totalMargin.mean;
@@ -115,7 +123,7 @@ function evaluateForScoreBounds(request: OptimizationRequest): {
   let maxDistance = allResult.spatial?.weightedDistanceKm ?? 0;
 
   for (const kiosk of request.kiosks.slice(0, 3)) {
-    const result = evaluateScenario(request, new Set([kiosk.id]), Math.min(request.global.replicas, 12));
+    const result = evaluateScenario(request, new Set([kiosk.id]));
     minMargin = Math.min(minMargin, result.summary.totalMargin.mean);
     maxMargin = Math.max(maxMargin, result.summary.totalMargin.mean);
     minDistance = Math.min(minDistance, result.spatial?.weightedDistanceKm ?? 0);
@@ -136,13 +144,23 @@ function canAddCandidate(request: OptimizationRequest, selectedIds: Set<string>,
   return currentBudget + candidate.acquisitionPrice <= request.budgetCap;
 }
 
-export function runOptimization(
+export async function runOptimization(
   request: OptimizationRequest,
   onProgress?: (progress: OptimizationProgress) => void,
-): OptimizationResult {
+): Promise<OptimizationResult> {
+  // Cede el event loop cada cierto número de evaluaciones pesadas para que el
+  // GC pueda recuperar memoria y el stream pueda emitir progreso.
+  const YIELD_EVERY = 8;
+  let evalsSinceYield = 0;
+  const maybeYield = async () => {
+    if (++evalsSinceYield >= YIELD_EVERY) {
+      evalsSinceYield = 0;
+      await yieldToEventLoop();
+    }
+  };
+
   const scoreBounds = evaluateForScoreBounds(request);
   const lockedIds = new Set(request.kiosks.filter((kiosk) => kiosk.locked).map((kiosk) => kiosk.id));
-  const baseReplicas = Math.min(request.global.replicas, 20);
   const coarseCandidates = request.kiosks.filter((kiosk) => kiosk.active !== false);
   const topScenarios: OptimizationScenarioSummary[] = [];
 
@@ -159,12 +177,13 @@ export function runOptimization(
         if (!canAddCandidate(request, selectedIds, candidate)) continue;
         const trialIds = new Set(selectedIds);
         trialIds.add(candidate.id);
-        const result = evaluateScenario(request, trialIds, baseReplicas);
+        const result = evaluateScenario(request, trialIds);
         const scoreResult = scoreScenario(result, scoreBounds, request.scoreWeights);
         if (!bestCandidate || scoreResult.score > bestCandidate.score) {
           bestCandidate = { kiosk: candidate, result, score: scoreResult.score };
         }
         onProgress?.({ stage: "greedy", completed, total: remaining.length, siteCount });
+        await maybeYield();
       }
 
       if (!bestCandidate) break;
@@ -174,7 +193,7 @@ export function runOptimization(
     let improved = true;
     while (improved) {
       improved = false;
-      const currentResult = evaluateScenario(request, selectedIds, baseReplicas);
+      const currentResult = evaluateScenario(request, selectedIds);
       const currentScore = scoreScenario(currentResult, scoreBounds, request.scoreWeights).score;
       const selected = coarseCandidates.filter((kiosk) => selectedIds.has(kiosk.id) && !lockedIds.has(kiosk.id));
       const unselected = coarseCandidates.filter((kiosk) => !selectedIds.has(kiosk.id));
@@ -188,9 +207,10 @@ export function runOptimization(
           const trialIds = new Set(selectedIds);
           trialIds.delete(selectedKiosk.id);
           trialIds.add(candidate.id);
-          const result = evaluateScenario(request, trialIds, baseReplicas);
+          const result = evaluateScenario(request, trialIds);
           const trialScore = scoreScenario(result, scoreBounds, request.scoreWeights).score;
           onProgress?.({ stage: "swap", completed, total, siteCount });
+          await maybeYield();
           if (trialScore > currentScore) {
             selectedIds.delete(selectedKiosk.id);
             selectedIds.add(candidate.id);
@@ -202,7 +222,7 @@ export function runOptimization(
       }
     }
 
-    const finalResult = evaluateScenario(request, selectedIds);
+    const finalResult = evaluateScenario(request, selectedIds, true);
     const components = scoreScenario(finalResult, scoreBounds, request.scoreWeights);
     topScenarios.push({
       selectedKioskIds: Array.from(selectedIds),

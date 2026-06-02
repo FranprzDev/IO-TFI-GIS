@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useTucumanKioskPlacement } from "@/hooks/useTucumanKioskPlacement";
 import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
@@ -21,7 +22,6 @@ const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").the
 
 interface Draft {
   horizonDays: number;
-  replicas: number;
   capacity: number;
   serviceMinA: number;
   serviceMinB: number;
@@ -44,7 +44,6 @@ interface BootstrapData {
 
 const baseDraft: Draft = {
   horizonDays: 180,
-  replicas: 60,
   capacity: 100,
   serviceMinA: 4,
   serviceMinB: 10,
@@ -66,28 +65,33 @@ function toDemandWeight(population2022: number, density: number) {
 }
 
 export default function Home() {
-  const initialDraft = typeof window === "undefined"
-    ? baseDraft
-    : { ...baseDraft, ...(readScenarioDraft<Draft>() ?? {}) };
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [demandZones, setDemandZones] = useState<DemandZone[]>([]);
-  const [draft, setDraft] = useState<Draft>(initialDraft);
+  const [draft, setDraft] = useState<Draft>(baseDraft);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
-  const [historyCount, setHistoryCount] = useState(() => (typeof window === "undefined" ? 0 : readHistory().length));
+  const [historyCount, setHistoryCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
-  const [progressReplica, setProgressReplica] = useState(0);
   const [optimizationPct, setOptimizationPct] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | "optimize" | null }>({ open: false, action: null });
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
-  const { placeKiosk, placementError } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
+  const { placeKiosk } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
 
+  // Hydrate persisted values after mount only — reading localStorage during
+  // render would make the server and client HTML disagree (hydration error).
+  // Setting state here on mount is the intended hydration-safe pattern, so the
+  // cascading-render lint rule is deliberately suppressed for these two reads.
   useEffect(() => {
     window.localStorage.removeItem(LAST_RESULT_KEY);
+    const stored = readScenarioDraft<Draft>();
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (stored) setDraft((prev) => ({ ...prev, ...stored }));
+    setHistoryCount(readHistory().length);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
@@ -137,7 +141,6 @@ export default function Home() {
   const valid = useMemo(() => {
     return draft.capacity > 0
       && draft.horizonDays > 0
-      && draft.replicas > 0
       && draft.serviceMinA < draft.serviceMinB
       && draft.valueSigma > 0
       && draft.totalDemandMu > 0
@@ -148,7 +151,12 @@ export default function Home() {
   }, [draft]);
 
   const onMapClick = (lat: number, lon: number) => {
-    placeKiosk(lat, lon);
+    const placed = placeKiosk(lat, lon);
+    if (!placed) {
+      toast.error("No puedes poner un kiosco afuera de Tucumán", {
+        description: "Cada marcador es un kiosco y debe quedar dentro de los límites de la provincia.",
+      });
+    }
   };
 
   function buildInput(selectedIds?: string[]): ScenarioInput {
@@ -170,7 +178,6 @@ export default function Home() {
       global: {
         capacityMaxDevices: draft.capacity,
         horizonDays: draft.horizonDays,
-        replicas: draft.replicas,
         confidenceLevel: 0.95,
         warmupDays: 0,
         serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
@@ -216,7 +223,6 @@ export default function Home() {
     const input = buildInput();
     setIsRunning(true);
     setProgressDay(0);
-    setProgressReplica(0);
     setErrors([]);
     setShowResultModal(false);
 
@@ -254,7 +260,6 @@ export default function Home() {
           const data = JSON.parse(dataLine[1]);
 
           if (event === "progress") {
-            setProgressReplica(data.replica as number);
             setProgressDay(data.day as number);
           } else if (event === "result" && data.ok) {
             const simResult = data.result as SimulationResult;
@@ -262,7 +267,6 @@ export default function Home() {
             saveLastResult(simResult);
             setHistoryCount(readHistory().length);
             setResult(simResult);
-            setProgressReplica(input.global.replicas);
             setProgressDay(input.global.horizonDays);
             setShowResultModal(true);
           } else if (event === "error") {
@@ -351,12 +355,8 @@ export default function Home() {
     }
   }
 
-  const totalWork = Math.max(1, draft.replicas * draft.horizonDays);
-  const completedWork = Math.max(
-    0,
-    Math.min(totalWork, Math.max(0, progressReplica - 1) * Math.max(1, draft.horizonDays) + Math.min(progressDay, draft.horizonDays)),
-  );
-  const progressPct = Math.min(100, (completedWork / totalWork) * 100);
+  const totalWork = Math.max(1, draft.horizonDays);
+  const progressPct = Math.min(100, (Math.min(progressDay, draft.horizonDays) / totalWork) * 100);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -370,11 +370,8 @@ export default function Home() {
           <section className="mt-4 space-y-3">
             <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Simulacion</h2>
             <NumberField label="Horizonte (dias)" value={draft.horizonDays} min={1} max={3650} onChange={(value) => setDraft({ ...draft, horizonDays: value })} />
-            <NumberField label="Replicas" value={draft.replicas} min={1} max={300} onChange={(value) => setDraft({ ...draft, replicas: value })} />
             <NumberField label="Capacidad por kiosko" value={draft.capacity} min={1} max={1000} onChange={(value) => setDraft({ ...draft, capacity: value })} />
             <NumberField label="Precio por kiosko" value={draft.acquisitionPrice} min={0} max={100000} onChange={(value) => setDraft({ ...draft, acquisitionPrice: value })} />
-            <NumberField label="Demanda diaria mu" value={draft.totalDemandMu} min={1} max={5000} onChange={(value) => setDraft({ ...draft, totalDemandMu: value })} />
-            <NumberField label="Demanda diaria sigma" value={draft.totalDemandSigma} min={1} max={5000} onChange={(value) => setDraft({ ...draft, totalDemandSigma: value })} />
             <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
           </section>
 
@@ -436,7 +433,7 @@ export default function Home() {
               subtitle={isRunning ? "Ejecutando simulacion..." : "Listo para ejecutar"}
               value={`${progressPct.toFixed(1)}%`}
             >
-              Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays} | Replica {Math.min(progressReplica, draft.replicas)} / {draft.replicas}
+              Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
               <ProgressBar pct={progressPct} />
             </ProgressCard>
             <ProgressCard
@@ -459,10 +456,6 @@ export default function Home() {
               className="h-full w-full rounded-xl border border-[var(--border)]"
             />
           </div>
-
-          {placementError && (
-            <ErrorPanel messages={[placementError]} />
-          )}
 
           {errors.length > 0 && (
             <ErrorPanel messages={errors} />
@@ -553,10 +546,10 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
           </button>
         </div>
         <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
-          <p>Margen promedio: {result.summary.totalMargin.mean.toFixed(2)}</p>
-          <p>IC95 margen: [{result.summary.totalMargin.ci95Lower.toFixed(2)}, {result.summary.totalMargin.ci95Upper.toFixed(2)}]</p>
-          <p>Amortizacion promedio (dias): {result.summary.amortizationDays.mean.toFixed(0)}</p>
-          <p>Prob. factible: {(result.summary.feasibleProbability * 100).toFixed(1)}%</p>
+          <p>Margen: {result.summary.totalMargin.mean.toFixed(2)}</p>
+          <p>Ingresos: {result.summary.totalRevenue.mean.toFixed(2)}</p>
+          <p>Amortizacion (dias): {result.summary.amortizationDays.mean.toFixed(0)}</p>
+          <p>Factible: {result.summary.feasibleProbability >= 1 ? "Si" : "No"}</p>
           <p>Cobertura: {((result.spatial?.coveredDemandPct ?? 0) * 100).toFixed(1)}%</p>
           <p>Distancia ponderada: {(result.spatial?.weightedDistanceKm ?? 0).toFixed(2)} km</p>
           <p>Balance de carga: {(result.spatial?.loadBalanceScore ?? 0).toFixed(3)}</p>

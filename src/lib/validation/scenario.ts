@@ -17,7 +17,6 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
   const g = input.global;
   if (!Number.isInteger(g.capacityMaxDevices) || g.capacityMaxDevices <= 0) errors.push({ field: "global.capacityMaxDevices", message: "Capacidad debe ser entero > 0" });
   if (!Number.isInteger(g.horizonDays) || g.horizonDays <= 0) errors.push({ field: "global.horizonDays", message: "Horizonte debe ser entero > 0" });
-  if (!Number.isInteger(g.replicas) || g.replicas <= 0) errors.push({ field: "global.replicas", message: "Replicas debe ser entero > 0" });
   if (!finite(g.confidenceLevel) || g.confidenceLevel <= 0 || g.confidenceLevel >= 1) errors.push({ field: "global.confidenceLevel", message: "Nivel de confianza debe estar entre 0 y 1" });
   if (!Number.isInteger(g.warmupDays) || g.warmupDays < 0) errors.push({ field: "global.warmupDays", message: "Warm-up debe ser entero >= 0" });
   if (!finite(g.operationCostPerDevice) || g.operationCostPerDevice < 0) errors.push({ field: "global.operationCostPerDevice", message: "Costo por dispositivo debe ser >= 0" });

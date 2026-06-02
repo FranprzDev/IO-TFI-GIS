@@ -15,13 +15,14 @@ export async function POST(req: Request) {
   } as const;
 
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const send = (event: string, data: unknown) => {
         controller.enqueue(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
 
+      let lastReportedPct = -1;
       try {
-        const result = runOptimization(body, (progress) => {
+        const result = await runOptimization(body, (progress) => {
           const stageOffset = progress.stage === "greedy"
             ? 0
             : progress.stage === "swap"
@@ -32,7 +33,12 @@ export async function POST(req: Request) {
           const siteIndex = progress.siteCount - body.minSites;
           const absoluteFraction = (siteIndex + perSiteFraction) / siteSpan;
           const pct = Math.floor(Math.min(100, Math.max(0, absoluteFraction * 100)));
-          send("progress", { ...progress, pct });
+          // Throttle: only emit when the integer percentage actually advances,
+          // so thousands of evaluations don't enqueue thousands of SSE chunks.
+          if (pct > lastReportedPct) {
+            lastReportedPct = pct;
+            send("progress", { stage: progress.stage, siteCount: progress.siteCount, pct });
+          }
         });
 
         send("result", { ok: true, result });
