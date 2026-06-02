@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const totalWork = body.global.replicas * body.global.horizonDays;
+  const totalWork = Math.max(1, body.global.horizonDays);
   let lastReportedPct = -1;
 
   const stream = new ReadableStream({
@@ -25,19 +25,15 @@ export async function POST(req: Request) {
       };
 
       try {
-        const result = await runSimulationAsync(body, ({ replica, day }) => {
-          const done = (replica - 1) * body.global.horizonDays + day;
-          const pct = Math.floor((done / totalWork) * 100);
+        const result = await runSimulationAsync(body, ({ day }) => {
+          const pct = Math.floor((day / totalWork) * 100);
           if (pct > lastReportedPct) {
             lastReportedPct = pct;
-            send("progress", { replica, day, pct });
+            send("progress", { day, pct });
           }
         });
 
-        // Strip replicas array before sending — the summary has everything the UI needs.
-        const slim = { ...result };
-        delete slim.replicas;
-        send("result", { ok: true, result: slim });
+        send("result", { ok: true, result });
       } catch (err) {
         send("error", { ok: false, message: String(err) });
       } finally {

@@ -1,8 +1,9 @@
 "use client";
 
-import { CircleMarker, MapContainer, Marker, Polygon, Rectangle, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { useEffect, useState } from "react";
+import { CircleMarker, GeoJSON, MapContainer, Marker, Polygon, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { TUCUMAN_BOUNDS, TUCUMAN_CENTER } from "@/lib/geo/tucuman";
+import { TUCUMAN_BOUNDS, TUCUMAN_CENTER, TUCUMAN_GEOJSON } from "@/lib/geo/tucuman";
 import type { DemandZone, Kiosk, VoronoiCell } from "@/types/simulation";
 
 const icon = L.icon({
@@ -37,8 +38,25 @@ export function KioskLeafletMap({
   className?: string;
 }) {
   const highlighted = new Set(highlightedKioskIds ?? []);
+  const [isMounted, setIsMounted] = useState(false);
+  const [mapKey, setMapKey] = useState(0);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setIsMounted(true);
+      setMapKey((currentKey) => currentKey + 1);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  if (!isMounted) {
+    return <div className={className ?? "h-[520px] w-full rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"} />;
+  }
+
   return (
     <MapContainer
+      key={mapKey}
       center={TUCUMAN_CENTER}
       zoom={8}
       scrollWheelZoom
@@ -50,9 +68,9 @@ export function KioskLeafletMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <Rectangle
-        bounds={TUCUMAN_BOUNDS}
-        pathOptions={{ color: "#dc2626", weight: 2, fillColor: "#dc2626", fillOpacity: 0.04 }}
+      <GeoJSON
+        data={TUCUMAN_GEOJSON}
+        style={{ color: "#dc2626", weight: 2, fillColor: "#dc2626", fillOpacity: 0.04 }}
         interactive={false}
       />
       {voronoiCells?.map((cell) => (

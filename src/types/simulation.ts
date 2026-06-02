@@ -32,7 +32,6 @@ export interface Kiosk {
 export interface GlobalParams {
   capacityMaxDevices: number;
   horizonDays: number;
-  replicas: number;
   confidenceLevel: number;
   warmupDays: number;
   serviceTime: UniformDistributionParams;
@@ -81,8 +80,7 @@ export interface KioskRunMetrics {
   collectionsTriggered: number;
 }
 
-export interface SimulationReplicaResult {
-  replica: number;
+export interface SimulationRunResult {
   seed: number;
   kiosks: KioskRunMetrics[];
   totalDevices: number;
@@ -133,7 +131,6 @@ export interface SimulationResult {
   runId: string;
   timestamp: string;
   input: ScenarioInput;
-  replicas?: SimulationReplicaResult[];
   summary: {
     totalMargin: KpiSummary;
     totalRevenue: KpiSummary;

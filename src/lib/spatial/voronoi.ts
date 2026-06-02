@@ -62,11 +62,22 @@ function toDemandWeight(zone: DemandZone): number {
   return Math.max(1, zone.demandWeight);
 }
 
+export interface SnapshotOptions {
+  /**
+   * Build the Voronoi cell polygons (needed only for map rendering). Skipping
+   * them avoids one proj4 unprojection per polygon vertex per kiosk, which is
+   * pure waste during the optimizer's thousands of intermediate evaluations.
+   */
+  includeCells?: boolean;
+}
+
 export function buildSpatialSnapshot(
   kiosks: Kiosk[],
   demandZones: DemandZone[],
   serviceDistanceKm: number,
+  options: SnapshotOptions = {},
 ): SpatialSnapshot {
+  const includeCells = options.includeCells ?? true;
   const activeKiosks = kiosks.filter((k) => k.active !== false);
   if (activeKiosks.length === 0 || demandZones.length === 0) {
     return {
@@ -94,7 +105,11 @@ export function buildSpatialSnapshot(
 
   const delaunay = Delaunay.from(projectedKiosks, (d) => d.projected.x, (d) => d.projected.y);
   const bounds = getProjectedBounds();
-  const voronoi = delaunay.voronoi([bounds.minX, bounds.minY, bounds.maxX, bounds.maxY]);
+  // The Voronoi diagram is only needed for the cell polygons; skip building it
+  // when the caller does not need them.
+  const voronoi = includeCells
+    ? delaunay.voronoi([bounds.minX, bounds.minY, bounds.maxX, bounds.maxY])
+    : null;
 
   const assignments: SpatialAssignment[] = [];
   const demandByKiosk = new Map<string, KioskDemandSummary>();
@@ -112,10 +127,15 @@ export function buildSpatialSnapshot(
     const nearest = projectedKiosks[nearestIndex];
     const distanceKm = haversineKm({ lat: zone.lat, lon: zone.lon }, { lat: nearest.kiosk.lat, lon: nearest.kiosk.lon });
     const weight = toDemandWeight(zone);
-    const secondNearestDistanceKm = projectedKiosks
-      .filter((_, index) => index !== nearestIndex)
-      .map(({ kiosk }) => haversineKm({ lat: zone.lat, lon: zone.lon }, { lat: kiosk.lat, lon: kiosk.lon }))
-      .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
+    // Smallest distance to any kiosk other than the nearest — computed in a
+    // single allocation-free pass (no intermediate array, no sort per zone).
+    let secondNearestDistanceKm = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < projectedKiosks.length; i++) {
+      if (i === nearestIndex) continue;
+      const k = projectedKiosks[i].kiosk;
+      const d = haversineKm({ lat: zone.lat, lon: zone.lon }, { lat: k.lat, lon: k.lon });
+      if (d < secondNearestDistanceKm) secondNearestDistanceKm = d;
+    }
 
     assignments.push({
       demandZoneId: zone.id,
@@ -148,13 +168,15 @@ export function buildSpatialSnapshot(
   const demandStdDev = Math.sqrt(demandVariance);
   const loadBalanceScore = meanDemand > 0 ? Math.max(0, 1 - (demandStdDev / meanDemand)) : 0;
 
-  const voronoiCells: VoronoiCell[] = activeKiosks.map((kiosk, index) => {
-    const polygon = voronoi.cellPolygon(index) ?? [];
-    const points = polygon
-      .filter((point): point is [number, number] => Array.isArray(point) && point.length === 2)
-      .map(([x, y]) => unprojectPoint({ x, y }));
-    return { kioskId: kiosk.id, points };
-  });
+  const voronoiCells: VoronoiCell[] = voronoi
+    ? activeKiosks.map((kiosk, index) => {
+        const polygon = voronoi.cellPolygon(index) ?? [];
+        const points = polygon
+          .filter((point): point is [number, number] => Array.isArray(point) && point.length === 2)
+          .map(([x, y]) => unprojectPoint({ x, y }));
+        return { kioskId: kiosk.id, points };
+      })
+    : [];
 
   return {
     weightedDistanceKm: totalWeight > 0 ? weightedDistanceKm / totalWeight : 0,
