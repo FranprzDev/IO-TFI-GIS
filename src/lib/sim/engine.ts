@@ -1,29 +1,26 @@
 import { LcgRng } from "./rng";
 import { createNormalSampler, sampleUniform } from "./distributions";
-import { OnlineStat } from "./stats";
-import { buildSpatialSnapshot } from "@/lib/spatial/voronoi";
-import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
+import { buildSpatialSnapshot, type SpatialSnapshot } from "@/lib/spatial/voronoi";
+import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationRunResult, SimulationResult } from "../../types/simulation";
 
 export interface ProgressInfo {
-  replica: number;
   day: number;
-  totalReplicas: number;
   totalDays: number;
 }
 
 interface RunOptions {
-  includeReplicas?: boolean;
+  /** Build Voronoi cell polygons in the result's spatial snapshot (map only). */
+  includeSpatialCells?: boolean;
 }
 
-function* simulateReplica(
-  input: ScenarioInput,
-  replica: number,
-): Generator<{ replica: number; day: number; totalDays: number }, SimulationReplicaResult, void> {
-  const seed = input.seed + replica * 9973;
-  const rng = new LcgRng(seed);
-  const sampleNormal = createNormalSampler();
+/**
+ * The spatial snapshot and demand shares depend only on geometry (kiosks,
+ * zones, service distance) — never on the RNG — so they are built once per
+ * simulation, instead of rebuilding the full Voronoi/Delaunay diagram repeatedly.
+ */
+function prepareSharedState(input: ScenarioInput, includeCells: boolean) {
   const activeKiosks = input.kiosks.filter((k) => k.active !== false);
-  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm);
+  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm, { includeCells });
   const totalDemandWeight = Object.values(spatial.demandByKiosk).reduce((sum, item) => sum + item.effectiveDemand, 0);
   const demandShareByKiosk = new Map(
     activeKiosks.map((kiosk) => {
@@ -32,6 +29,17 @@ function* simulateReplica(
       return [kiosk.id, share];
     }),
   );
+  return { activeKiosks, spatial, demandShareByKiosk };
+}
+
+function* simulateRun(
+  input: ScenarioInput,
+  activeKiosks: Kiosk[],
+  demandShareByKiosk: Map<string, number>,
+): Generator<{ day: number; totalDays: number }, SimulationRunResult, void> {
+  const seed = input.seed;
+  const rng = new LcgRng(seed);
+  const sampleNormal = createNormalSampler();
 
   const acc = new Map<string, { devices: number; revenue: number; cost: number; service: number; slots: number; collections: number; usedDays: number; }>();
   for (const kiosk of activeKiosks) {
@@ -67,7 +75,7 @@ function* simulateReplica(
         }
       }
     }
-    yield { replica, day, totalDays: input.global.horizonDays };
+    yield { day, totalDays: input.global.horizonDays };
   }
 
   const kiosks: KioskRunMetrics[] = activeKiosks.map((k) => {
@@ -95,13 +103,12 @@ function* simulateReplica(
     : Number.POSITIVE_INFINITY;
   const feasible = totalMargin >= 0 && amortizationDays <= input.global.horizonDays;
 
-  return { replica, seed, kiosks, totalDevices, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
+  return { seed, kiosks, totalDevices, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
 }
 
-function overConfigWarnings(input: ScenarioInput): string[] {
+function overConfigWarnings(input: ScenarioInput, spatial: SpatialSnapshot): string[] {
   const warnings: string[] = [];
   const activeKiosks = input.kiosks.filter((k) => k.active !== false);
-  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm);
   const totalWeight = Math.max(1, spatial.capturedDemand);
 
   for (const kiosk of activeKiosks) {
@@ -142,41 +149,33 @@ function allocateDailyDemand(
   return assigned;
 }
 
-/** Accumulates per-replica scalars without storing replica objects. */
-class SimAccumulator {
-  margin = new OnlineStat();
-  revenue = new OnlineStat();
-  cost = new OnlineStat();
-  devices = new OnlineStat();
-  amortization = new OnlineStat();
-  feasibleCount = 0;
-
-  push(r: SimulationReplicaResult, horizonDays: number) {
-    this.margin.push(r.totalMargin);
-    this.revenue.push(r.totalRevenue);
-    this.cost.push(r.totalCost);
-    this.devices.push(r.totalDevices);
-    this.amortization.push(Number.isFinite(r.amortizationDays) ? r.amortizationDays : horizonDays * 10);
-    if (r.feasible) this.feasibleCount++;
-  }
-
-  summarize(): SimulationResult["summary"] {
-    const s = (stat: OnlineStat) => {
-      const c = stat.ci95();
-      return { mean: stat.mean, ci95Lower: c.lower, ci95Upper: c.upper };
-    };
-    return {
-      totalMargin: s(this.margin),
-      totalRevenue: s(this.revenue),
-      totalCost: s(this.cost),
-      totalDevices: s(this.devices),
-      amortizationDays: s(this.amortization),
-      feasibleProbability: this.margin.count > 0 ? this.feasibleCount / this.margin.count : 0,
-    };
-  }
+/** Builds the result summary from a single simulation run. */
+function buildSummary(run: SimulationRunResult, horizonDays: number): SimulationResult["summary"] {
+  const point = (value: number) => ({ mean: value, ci95Lower: value, ci95Upper: value });
+  const amortization = Number.isFinite(run.amortizationDays) ? run.amortizationDays : horizonDays * 10;
+  return {
+    totalMargin: point(run.totalMargin),
+    totalRevenue: point(run.totalRevenue),
+    totalCost: point(run.totalCost),
+    totalDevices: point(run.totalDevices),
+    amortizationDays: point(amortization),
+    feasibleProbability: run.feasible ? 1 : 0,
+  };
 }
 
-/** Synchronous engine — used in tests and the server route (blocking is acceptable). */
+function buildResult(input: ScenarioInput, run: SimulationRunResult, spatial: SpatialSnapshot): SimulationResult {
+  return {
+    scenario: input.scenario,
+    runId: `${input.scenario}-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    input,
+    summary: buildSummary(run, input.global.horizonDays),
+    warnings: overConfigWarnings(input, spatial),
+    spatial,
+  };
+}
+
+/** Synchronous engine — used in tests and the optimizer (blocking is acceptable). */
 export function runSimulation(input: ScenarioInput, options?: RunOptions): SimulationResult {
   return runSimulationWithProgress(input, undefined, options);
 }
@@ -186,64 +185,37 @@ export function runSimulationWithProgress(
   onProgress?: (info: ProgressInfo) => void,
   options?: RunOptions,
 ): SimulationResult {
-  const acc = new SimAccumulator();
-  const keepReplicas = options?.includeReplicas ?? (input.global.replicas <= 50);
-  const replicaResults: SimulationReplicaResult[] = [];
+  const { activeKiosks, spatial, demandShareByKiosk } = prepareSharedState(input, options?.includeSpatialCells ?? true);
 
-  for (let r = 0; r < input.global.replicas; r++) {
-    const gen = simulateReplica(input, r + 1);
-    let step = gen.next();
-    while (!step.done) {
-      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
-      step = gen.next();
-    }
-    acc.push(step.value, input.global.horizonDays);
-    if (keepReplicas) replicaResults.push(step.value);
+  const gen = simulateRun(input, activeKiosks, demandShareByKiosk);
+  let step = gen.next();
+  while (!step.done) {
+    onProgress?.(step.value);
+    step = gen.next();
   }
 
-  return {
-    scenario: input.scenario,
-    runId: `${input.scenario}-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    input,
-    replicas: replicaResults,
-    summary: acc.summarize(),
-    warnings: overConfigWarnings(input),
-    spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
-  };
+  return buildResult(input, step.value, spatial);
 }
 
 /**
  * Async engine for the server-side SSE route.
- * Yields to the Node.js event loop between replicas via setImmediate so the
+ * Yields to the Node.js event loop periodically via setImmediate so the
  * stream can flush progress events to the client without blocking I/O.
  */
 export async function runSimulationAsync(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
 ): Promise<SimulationResult> {
-  const acc = new SimAccumulator();
+  const { activeKiosks, spatial, demandShareByKiosk } = prepareSharedState(input, true);
 
-  for (let r = 0; r < input.global.replicas; r++) {
-    const gen = simulateReplica(input, r + 1);
-    let step = gen.next();
-    while (!step.done) {
-      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
-      step = gen.next();
-    }
-    acc.push(step.value, input.global.horizonDays);
+  const gen = simulateRun(input, activeKiosks, demandShareByKiosk);
+  let step = gen.next();
+  while (!step.done) {
+    onProgress?.(step.value);
+    step = gen.next();
     // Yield to the event loop so Node can flush SSE chunks to the client.
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
-  return {
-    scenario: input.scenario,
-    runId: `${input.scenario}-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    input,
-    replicas: [],
-    summary: acc.summarize(),
-    warnings: overConfigWarnings(input),
-    spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
-  };
+  return buildResult(input, step.value, spatial);
 }
