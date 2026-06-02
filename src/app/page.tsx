@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
 import type { Conglomerate, Kiosk, ScenarioInput, SimulationResult } from "@/types/simulation";
+import { useTucumanKioskPlacement } from "@/hooks/useTucumanKioskPlacement";
 
 const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").then((m) => m.KioskLeafletMap), { ssr: false });
 
@@ -39,6 +40,7 @@ export default function Home() {
   const [progressReplica, setProgressReplica] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
+  const { placeKiosk, placementError } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
 
   useEffect(() => {
     const savedDraft = readScenarioDraft<Draft>();
@@ -64,7 +66,7 @@ export default function Home() {
           conglomerateId: idx % 2 === 0 ? "cg-1" : "cg-2",
           lat: k.latitud,
           lon: k.longitud,
-          acquisitionPrice: draft.acquisitionPrice,
+          acquisitionPrice: baseDraft.acquisitionPrice,
         }));
         setKiosks(all);
       })
@@ -79,19 +81,9 @@ export default function Home() {
     return draft.capacity > 0 && draft.horizonDays > 0 && draft.replicas > 0 && draft.serviceMinA < draft.serviceMinB && draft.valueSigma > 0;
   }, [draft]);
 
-  const onMapClick = useCallback((lat: number, lon: number) => {
-    const newKiosk: Kiosk = {
-      id: `k-${Date.now()}`,
-      nombre: `Kiosko manual ${kiosks.length + 1}`,
-      calle: "Punto manual",
-      chain: "Gobierno",
-      conglomerateId: kiosks.length % 2 === 0 ? "cg-1" : "cg-2",
-      lat,
-      lon,
-      acquisitionPrice: draft.acquisitionPrice,
-    };
-    setKiosks((prev) => [...prev, newKiosk]);
-  }, [kiosks.length, draft.acquisitionPrice]);
+  const onMapClick = (lat: number, lon: number) => {
+    placeKiosk(lat, lon);
+  };
 
   const buildInput = (): ScenarioInput => ({
     scenario: "A",
@@ -259,6 +251,12 @@ export default function Home() {
           <div className="min-h-0 flex-1">
             <KioskLeafletMap kiosks={kiosks} onMapClick={onMapClick} className="h-full w-full rounded-xl border border-[var(--border)]" />
           </div>
+
+          {placementError && (
+            <div className="mt-4 rounded border border-red-500/60 bg-red-500/10 p-3 text-sm text-red-200">
+              {placementError}
+            </div>
+          )}
 
           {errors.length > 0 && (
             <div className="mt-4 rounded border border-red-500/60 bg-red-500/10 p-3 text-sm text-red-200">

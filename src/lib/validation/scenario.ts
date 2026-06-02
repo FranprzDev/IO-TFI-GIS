@@ -1,4 +1,5 @@
 import type { ScenarioInput } from "../../types/simulation";
+import { isWithinTucumanBounds } from "@/lib/geo/tucuman";
 
 export interface ValidationError {
   field: string;
@@ -39,6 +40,7 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
     if (!k.id) errors.push({ field: `kiosk.${k.nombre}.id`, message: "ID requerido" });
     if (!finite(k.lat) || k.lat < -90 || k.lat > 90) errors.push({ field: `kiosk.${k.id}.lat`, message: "Latitud invalida" });
     if (!finite(k.lon) || k.lon < -180 || k.lon > 180) errors.push({ field: `kiosk.${k.id}.lon`, message: "Longitud invalida" });
+    if (finite(k.lat) && finite(k.lon) && !isWithinTucumanBounds(k.lat, k.lon)) errors.push({ field: `kiosk.${k.id}.location`, message: "Kiosko fuera de Tucuman" });
     if (!finite(k.acquisitionPrice) || k.acquisitionPrice < 0) errors.push({ field: `kiosk.${k.id}.acquisitionPrice`, message: "Precio invalido" });
   }
 

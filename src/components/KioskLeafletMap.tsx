@@ -1,7 +1,8 @@
 "use client";
 
-import { MapContainer, Marker, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
 import L from "leaflet";
+import { TUCUMAN_BOUNDS, TUCUMAN_CENTER } from "@/lib/geo/tucuman";
 import type { Kiosk } from "@/types/simulation";
 
 const icon = L.icon({
@@ -31,18 +32,21 @@ export function KioskLeafletMap({
 }) {
   return (
     <MapContainer
-      center={[-26.83, -65.22]}
-      zoom={11}
+      center={TUCUMAN_CENTER}
+      zoom={8}
       scrollWheelZoom
       className={className ?? "h-[520px] w-full rounded-xl border border-[var(--border)]"}
-      maxBounds={[
-        [-28.2, -66.2],
-        [-25.8, -64.8],
-      ]}
+      maxBounds={TUCUMAN_BOUNDS}
+      maxBoundsViscosity={0.7}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <Rectangle
+        bounds={TUCUMAN_BOUNDS}
+        pathOptions={{ color: "#dc2626", weight: 2, fillColor: "#dc2626", fillOpacity: 0.04 }}
+        interactive={false}
       />
       <ClickHandler onMapClick={onMapClick} />
       {kiosks.map((k) => (
