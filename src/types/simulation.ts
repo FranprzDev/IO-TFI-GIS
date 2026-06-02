@@ -78,7 +78,7 @@ export interface SimulationResult {
   runId: string;
   timestamp: string;
   input: ScenarioInput;
-  replicas: SimulationReplicaResult[];
+  replicas?: SimulationReplicaResult[];
   summary: {
     totalMargin: KpiSummary;
     totalRevenue: KpiSummary;

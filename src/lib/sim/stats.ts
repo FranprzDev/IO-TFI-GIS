@@ -21,3 +21,30 @@ export function ci95(values: number[]): { lower: number; upper: number } {
   const half = 1.96 * (sd / Math.sqrt(Math.max(1, values.length)));
   return { lower: m - half, upper: m + half };
 }
+
+/** Welford online algorithm — tracks mean and M2 without storing all values. */
+export class OnlineStat {
+  private n = 0;
+  private _mean = 0;
+  private m2 = 0;
+
+  push(x: number) {
+    this.n++;
+    const delta = x - this._mean;
+    this._mean += delta / this.n;
+    this.m2 += delta * (x - this._mean);
+  }
+
+  get count() { return this.n; }
+  get mean() { return this._mean; }
+
+  get variance() {
+    return this.n < 2 ? 0 : this.m2 / (this.n - 1);
+  }
+
+  ci95(): { lower: number; upper: number } {
+    const sd = Math.sqrt(this.variance);
+    const half = 1.96 * (sd / Math.sqrt(Math.max(1, this.n)));
+    return { lower: this._mean - half, upper: this._mean + half };
+  }
+}
