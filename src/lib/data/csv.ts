@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isWithinTucumanBounds } from "@/lib/geo/tucuman";
 
 export interface LocalityRow {
   nombre: string;
@@ -78,7 +79,7 @@ export async function loadDatasets() {
       latitud: parseNumber(latitudRaw),
       longitud: parseNumber(longitudRaw),
     };
-  }).filter((k) => k.latitud <= -26 && k.latitud >= -28 && k.longitud <= -65 && k.longitud >= -66);
+  }).filter((k) => isWithinTucumanBounds(k.latitud, k.longitud));
 
   return { localities, kiosks };
 }
