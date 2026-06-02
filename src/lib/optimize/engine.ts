@@ -48,7 +48,7 @@ function buildScenarioInput(request: OptimizationRequest, selectedIds: Set<strin
 }
 
 function evaluateScenario(request: OptimizationRequest, selectedIds: Set<string>, replicasOverride?: number): SimulationResult {
-  return runSimulation(buildScenarioInput(request, selectedIds, replicasOverride));
+  return runSimulation(buildScenarioInput(request, selectedIds, replicasOverride), { includeReplicas: false });
 }
 
 function scoreScenario(

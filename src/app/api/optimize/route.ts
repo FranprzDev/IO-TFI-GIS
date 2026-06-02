@@ -7,7 +7,12 @@ export const maxDuration = 300;
 export async function POST(req: Request) {
   const body = (await req.json()) as OptimizationRequest;
 
-  const totalSteps = Math.max(1, body.maxSites - body.minSites + 1);
+  const siteSpan = Math.max(1, body.maxSites - body.minSites + 1);
+  const stageWeights = {
+    greedy: 0.55,
+    swap: 0.35,
+    finalize: 0.10,
+  } as const;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -17,8 +22,16 @@ export async function POST(req: Request) {
 
       try {
         const result = runOptimization(body, (progress) => {
-          const siteProgress = (progress.siteCount - body.minSites) + (progress.completed / Math.max(1, progress.total));
-          const pct = Math.floor((siteProgress / totalSteps) * 100);
+          const stageOffset = progress.stage === "greedy"
+            ? 0
+            : progress.stage === "swap"
+              ? stageWeights.greedy
+              : stageWeights.greedy + stageWeights.swap;
+          const stageFraction = progress.completed / Math.max(1, progress.total);
+          const perSiteFraction = stageOffset + (stageFraction * stageWeights[progress.stage]);
+          const siteIndex = progress.siteCount - body.minSites;
+          const absoluteFraction = (siteIndex + perSiteFraction) / siteSpan;
+          const pct = Math.floor(Math.min(100, Math.max(0, absoluteFraction * 100)));
           send("progress", { ...progress, pct });
         });
 

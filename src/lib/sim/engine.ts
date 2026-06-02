@@ -11,6 +11,10 @@ export interface ProgressInfo {
   totalDays: number;
 }
 
+interface RunOptions {
+  includeReplicas?: boolean;
+}
+
 function* simulateReplica(
   input: ScenarioInput,
   replica: number,
@@ -173,17 +177,17 @@ class SimAccumulator {
 }
 
 /** Synchronous engine — used in tests and the server route (blocking is acceptable). */
-export function runSimulation(input: ScenarioInput): SimulationResult {
-  return runSimulationWithProgress(input);
+export function runSimulation(input: ScenarioInput, options?: RunOptions): SimulationResult {
+  return runSimulationWithProgress(input, undefined, options);
 }
 
 export function runSimulationWithProgress(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
+  options?: RunOptions,
 ): SimulationResult {
   const acc = new SimAccumulator();
-  // Keep replica results only when there are few replicas (tests).
-  const keepReplicas = input.global.replicas <= 50;
+  const keepReplicas = options?.includeReplicas ?? (input.global.replicas <= 50);
   const replicaResults: SimulationReplicaResult[] = [];
 
   for (let r = 0; r < input.global.replicas; r++) {
