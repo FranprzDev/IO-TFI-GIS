@@ -92,7 +92,7 @@ export default function Home() {
   const [progressDay, setProgressDay] = useState(0);
   const [optimizationPct, setOptimizationPct] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
-  const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | null }>({ open: false, action: null });
+  const [modal, setModal] = useState<{ open: boolean; action: "run" | "optimize" | "clear" | null }>({ open: false, action: null });
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
   const { placeKiosk } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
 
@@ -368,6 +368,7 @@ export default function Home() {
     const action = modal.action;
     setModal({ open: false, action: null });
     if (action === "run") void runSimulation();
+    if (action === "optimize") void runOptimization();
     if (action === "clear") {
       window.localStorage.removeItem(HISTORY_KEY);
       window.localStorage.removeItem(SCENARIO_KEY);
@@ -383,6 +384,11 @@ export default function Home() {
 
   const totalWork = Math.max(1, draft.horizonDays);
   const progressPct = Math.min(100, (Math.min(progressDay, draft.horizonDays) / totalWork) * 100);
+  const modalTitle = modal.action === "optimize"
+    ? "¿Estás seguro de optimizar la red?"
+    : modal.action === "run"
+      ? "¿Estás seguro de ejecutar la simulación?"
+      : "¿Estás seguro?";
   const activeProgress = isOptimizing
     ? {
         title: "Optimizacion",
@@ -404,7 +410,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      <ConfirmModal open={modal.open} title="Estas seguro?" onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
+      <ConfirmModal open={modal.open} title={modalTitle} onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
       <ResultModal open={showResultModal} result={result} onClose={() => setShowResultModal(false)} />
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[400px_1fr]">
         <aside className="flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
@@ -451,10 +457,6 @@ export default function Home() {
                 <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">
                   Limpiar historial
                 </button>
-                <div className="rounded border border-[var(--border)] p-3 text-sm">
-                  <p>Candidatos: {kiosks.length}</p>
-                  <p>Zonas de demanda: {demandZones.length}</p>
-                </div>
               </div>
             )}
 
@@ -464,14 +466,17 @@ export default function Home() {
                 <button
                   type="button"
                   disabled={!valid || isOptimizing || kiosks.length === 0 || demandZones.length === 0}
-                  onClick={() => void runOptimization()}
+                  onClick={() => setModal({ open: true, action: "optimize" })}
                   className="w-full rounded bg-[var(--accent)] px-3 py-2 font-semibold text-black disabled:opacity-40"
                 >
                   Optimizar red
                 </button>
                 <div className="rounded border border-[var(--border)] p-3 text-sm">
-                  <p>Min kioskos: {draft.minSites}</p>
-                  <p>Max kioskos: {optimizableKioskCount}</p>
+                  <NumberField label="Min kioskos" value={draft.minSites} min={1} max={optimizableKioskCount} onChange={(value) => setDraft({ ...draft, minSites: Math.min(value, optimizableKioskCount) })} />
+                  <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Max kioskos</div>
+                    <div className="mt-1 font-semibold">{optimizableKioskCount}</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -518,7 +523,6 @@ export default function Home() {
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
                   <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Restricciones</h2>
-                  <NumberField label="Min kioskos" value={draft.minSites} min={1} max={20} onChange={(value) => setDraft({ ...draft, minSites: value })} />
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Max kioskos efectivos</div>
                     <div className="mt-1 font-semibold">{optimizableKioskCount}</div>
@@ -528,12 +532,7 @@ export default function Home() {
             )}
           </div>
 
-          <section className="mt-4 text-sm">
-            <p>Candidatos: {kiosks.length}</p>
-            <p>Zonas de demanda: {demandZones.length}</p>
-          </section>
-
-          {optimization && (
+          {sidebarTab === "optimization" && optimization && (
             <section className="mt-4 space-y-2 rounded border border-[var(--border)] p-3 text-sm">
               <h2 className="font-semibold">Top escenarios</h2>
               {optimization.topScenarios.map((scenario, index) => (
