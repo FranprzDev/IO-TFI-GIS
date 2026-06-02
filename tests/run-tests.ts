@@ -60,6 +60,17 @@ assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci9
 const invalidRes = validateScenario({ ...base, global: { ...base.global, serviceTime: { kind: "uniform", a: 12, b: 10 } } });
 assert.ok(invalidRes.some((e) => e.field === "global.serviceTime"));
 
+// Determinism: same seed must produce identical results regardless of any
+// previous run. This guards against the Box-Muller spare leaking across runs.
+(function testDeterminism() {
+  runSimulation({ ...base, seed: 777 }); // pollute any shared sampler state
+  const a = runSimulation(base);
+  const b = runSimulation(base);
+  assert.equal(a.summary.totalMargin.mean, b.summary.totalMargin.mean);
+  assert.equal(a.summary.totalRevenue.mean, b.summary.totalRevenue.mean);
+  assert.equal(a.summary.totalDevices.mean, b.summary.totalDevices.mean);
+})();
+
 async function main() {
   const datasets = await loadDatasets();
   assert.ok(datasets.localities.length > 0);

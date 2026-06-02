@@ -1,15 +1,30 @@
 import { LcgRng } from "./rng";
-import { sampleNormal, sampleUniform } from "./distributions";
+import { createNormalSampler, sampleUniform } from "./distributions";
 import { ci95, mean } from "./stats";
 import type { KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
 
-function runReplica(
+export interface ProgressInfo {
+  replica: number;
+  day: number;
+  totalReplicas: number;
+  totalDays: number;
+}
+
+/**
+ * Runs a single replica as a generator that yields once per simulated day and
+ * returns the replica result. Driving it as a generator lets the synchronous
+ * and asynchronous engines share identical simulation logic while controlling
+ * how often they hand control back to the caller (for progress / UI repaints).
+ */
+function* simulateReplica(
   input: ScenarioInput,
   replica: number,
-  onDayProcessed?: (info: { replica: number; day: number; totalDays: number }) => void,
-): SimulationReplicaResult {
+): Generator<{ replica: number; day: number; totalDays: number }, SimulationReplicaResult, void> {
   const seed = input.seed + replica * 9973;
   const rng = new LcgRng(seed);
+  // Each replica owns its normal sampler so the Box-Muller spare never leaks
+  // between RNG streams (keeps results reproducible per seed).
+  const sampleNormal = createNormalSampler();
   const kiosksByCong = new Map<string, typeof input.kiosks>();
   for (const k of input.kiosks) {
     const list = kiosksByCong.get(k.conglomerateId) ?? [];
@@ -59,7 +74,7 @@ function runReplica(
         }
       }
     }
-    onDayProcessed?.({ replica, day, totalDays: input.global.horizonDays });
+    yield { replica, day, totalDays: input.global.horizonDays };
   }
 
   const kiosks: KioskRunMetrics[] = input.kiosks.map((k) => {
@@ -123,24 +138,62 @@ export function runSimulation(input: ScenarioInput): SimulationResult {
   return runSimulationWithProgress(input);
 }
 
+/**
+ * Synchronous engine. Drives every replica generator to completion in one pass.
+ * Suitable for the server route and tests where blocking is acceptable.
+ */
 export function runSimulationWithProgress(
   input: ScenarioInput,
-  onProgress?: (info: { replica: number; day: number; totalReplicas: number; totalDays: number }) => void,
+  onProgress?: (info: ProgressInfo) => void,
 ): SimulationResult {
   const replicas: SimulationReplicaResult[] = [];
   for (let r = 0; r < input.global.replicas; r++) {
-    replicas.push(
-      runReplica(input, r + 1, ({ replica, day, totalDays }) => {
-        onProgress?.({
-          replica,
-          day,
-          totalReplicas: input.global.replicas,
-          totalDays,
-        });
-      }),
-    );
+    const gen = simulateReplica(input, r + 1);
+    let step = gen.next();
+    while (!step.done) {
+      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
+      step = gen.next();
+    }
+    replicas.push(step.value);
   }
 
+  return summarize(input, replicas);
+}
+
+/**
+ * Asynchronous engine for the browser. Identical math to the synchronous engine,
+ * but it yields control back to the event loop on a time budget so React can
+ * flush progress state and repaint the bar mid-run. Without yielding, the whole
+ * simulation runs in one blocking tick and the progress bar jumps 0% -> 100%.
+ */
+export async function runSimulationWithProgressAsync(
+  input: ScenarioInput,
+  onProgress?: (info: ProgressInfo) => void,
+  yieldEveryMs = 30,
+): Promise<SimulationResult> {
+  const replicas: SimulationReplicaResult[] = [];
+  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+  let lastYield = now();
+
+  for (let r = 0; r < input.global.replicas; r++) {
+    const gen = simulateReplica(input, r + 1);
+    let step = gen.next();
+    while (!step.done) {
+      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
+      if (now() - lastYield >= yieldEveryMs) {
+        // Hand the thread back so queued state updates can paint.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        lastYield = now();
+      }
+      step = gen.next();
+    }
+    replicas.push(step.value);
+  }
+
+  return summarize(input, replicas);
+}
+
+function summarize(input: ScenarioInput, replicas: SimulationReplicaResult[]): SimulationResult {
   const margins = replicas.map((r) => r.totalMargin);
   const revenues = replicas.map((r) => r.totalRevenue);
   const costs = replicas.map((r) => r.totalCost);

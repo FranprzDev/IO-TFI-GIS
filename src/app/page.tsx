@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readLastResult, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
-import { runSimulationWithProgress } from "@/lib/sim/engine";
+import { runSimulationWithProgressAsync } from "@/lib/sim/engine";
 import { validateScenario } from "@/lib/validation/scenario";
 import type { Conglomerate, Kiosk, ScenarioInput, SimulationResult } from "@/types/simulation";
 
@@ -131,10 +131,12 @@ export default function Home() {
     try {
       setErrors([]);
       // Run the simulator locally and expose true execution progress (replica/day).
-      const simResult = runSimulationWithProgress(input, ({ replica, day }) => {
+      // The async engine yields to the event loop periodically so these state
+      // updates actually repaint the progress bar during the run.
+      const simResult = await runSimulationWithProgressAsync(input, ({ replica, day }) => {
         setProgressReplica(replica);
         setProgressDay(day);
-      }) as SimulationResult;
+      });
       saveHistoryEntry(simResult);
       saveLastResult(simResult);
       setHistoryCount(readHistory().length);
