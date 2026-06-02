@@ -20,11 +20,19 @@ type TucumanGeoJson = {
 
 export const TUCUMAN_GEOJSON = tucumanGeoJson as unknown as TucumanGeoJson;
 
+export type PolygonRing = Array<[number, number]>;
+export type PolygonGeometry = PolygonRing[];
+export type MultiPolygonGeometry = PolygonGeometry[];
+
 function getAllRings() {
   return TUCUMAN_GEOJSON.features.flatMap((feature) =>
     feature.geometry.type === "Polygon" ? feature.geometry.coordinates : feature.geometry.coordinates.flat(),
   );
 }
+
+export const TUCUMAN_POLYGONS: MultiPolygonGeometry = TUCUMAN_GEOJSON.features.flatMap((feature) =>
+  feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates,
+);
 
 const allPoints = getAllRings().flat();
 

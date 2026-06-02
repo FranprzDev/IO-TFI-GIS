@@ -53,7 +53,6 @@ export interface DemandZone {
 }
 
 export interface ScoreWeights {
-  margin: number;
   capturedDemand: number;
   coverage: number;
   balance: number;
@@ -112,6 +111,7 @@ export interface GeoPoint {
 export interface VoronoiCell {
   kioskId: string;
   points: GeoPoint[];
+  parts?: GeoPoint[][];
 }
 
 export interface SpatialMetrics {
@@ -171,7 +171,6 @@ export interface OptimizationRequest {
   operationCostPerDevice: number;
   minSites: number;
   maxSites: number;
-  budgetCap: number | null;
   scoreWeights: ScoreWeights;
 }
 
@@ -179,13 +178,12 @@ export interface OptimizationScenarioSummary {
   selectedKioskIds: string[];
   score: number;
   components: {
-    margin: number;
     capturedDemand: number;
     coverage: number;
     balance: number;
     cannibalization: number;
   };
-  simulation: SimulationResult;
+  spatial: SpatialMetrics;
   candidateEvaluations: CandidateEvaluation[];
 }
 

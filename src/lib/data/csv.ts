@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isWithinTucumanBounds } from "@/lib/geo/tucuman";
 
 export interface LocalityRow {
   id: string;
@@ -96,7 +95,7 @@ export async function loadDatasets() {
       latitud: parseNumber(latitudRaw),
       longitud: parseNumber(longitudRaw),
     };
-  }).filter((k) => isWithinTucumanBounds(k.latitud, k.longitud));
+  });
 
   const geocodedRows = localityPointLines.slice(1).map((line) => {
     const cols = parseCsvLine(line);
