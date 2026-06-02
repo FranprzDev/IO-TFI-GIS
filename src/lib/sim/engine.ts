@@ -169,7 +169,7 @@ export function runSimulationWithProgress(
 export async function runSimulationWithProgressAsync(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
-  yieldEveryMs = 30,
+  yieldEveryMs = 12,
 ): Promise<SimulationResult> {
   const replicas: SimulationReplicaResult[] = [];
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());

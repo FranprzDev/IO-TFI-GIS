@@ -123,19 +123,31 @@ export default function Home() {
 
     const totalDays = Math.max(1, input.global.horizonDays);
     const totalReplicas = Math.max(1, input.global.replicas);
+    const totalWorkUnits = totalDays * totalReplicas;
     setIsRunning(true);
     setProgressDay(0);
     setProgressReplica(0);
     setShowResultModal(false);
+
+    const startedAt = performance.now();
+    console.log(`[sim] inicio | replicas=${totalReplicas} dias=${totalDays} kioskos=${input.kiosks.length}`);
 
     try {
       setErrors([]);
       // Run the simulator locally and expose true execution progress (replica/day).
       // The async engine yields to the event loop periodically so these state
       // updates actually repaint the progress bar during the run.
+      let lastLoggedReplica = 0;
       const simResult = await runSimulationWithProgressAsync(input, ({ replica, day }) => {
         setProgressReplica(replica);
         setProgressDay(day);
+        // Log once per replica to verify progress without flooding the console.
+        if (replica !== lastLoggedReplica && day === totalDays) {
+          lastLoggedReplica = replica;
+          const doneUnits = replica * totalDays;
+          const pct = ((doneUnits / totalWorkUnits) * 100).toFixed(1);
+          console.log(`[sim] replica ${replica}/${totalReplicas} completada | ${pct}% | t=${(performance.now() - startedAt).toFixed(0)}ms`);
+        }
       });
       saveHistoryEntry(simResult);
       saveLastResult(simResult);
@@ -144,6 +156,7 @@ export default function Home() {
       setProgressReplica(totalReplicas);
       setProgressDay(totalDays);
       setShowResultModal(true);
+      console.log(`[sim] fin | t=${(performance.now() - startedAt).toFixed(0)}ms | margen medio=${simResult.summary.totalMargin.mean.toFixed(0)} | factible=${(simResult.summary.feasibleProbability * 100).toFixed(1)}%`);
     } finally {
       setTimeout(() => setIsRunning(false), 250);
     }
