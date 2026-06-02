@@ -53,7 +53,7 @@ assert.equal(validateScenario(base).length, 0);
 assert.ok(validateScenario({ ...base, global: { ...base.global, capacityMaxDevices: 0 } }).length > 0);
 
 const result = runSimulation(base);
-assert.equal(result.replicas.length, 30);
+assert.equal(result.replicas?.length, 30);
 assert.ok(result.summary.totalRevenue.mean > 0);
 assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci95Lower);
 

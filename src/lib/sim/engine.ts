@@ -1,6 +1,6 @@
 import { LcgRng } from "./rng";
 import { createNormalSampler, sampleUniform } from "./distributions";
-import { ci95, mean } from "./stats";
+import { ci95, mean, OnlineStat } from "./stats";
 import type { KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
 
 export interface ProgressInfo {
@@ -10,20 +10,12 @@ export interface ProgressInfo {
   totalDays: number;
 }
 
-/**
- * Runs a single replica as a generator that yields once per simulated day and
- * returns the replica result. Driving it as a generator lets the synchronous
- * and asynchronous engines share identical simulation logic while controlling
- * how often they hand control back to the caller (for progress / UI repaints).
- */
 function* simulateReplica(
   input: ScenarioInput,
   replica: number,
 ): Generator<{ replica: number; day: number; totalDays: number }, SimulationReplicaResult, void> {
   const seed = input.seed + replica * 9973;
   const rng = new LcgRng(seed);
-  // Each replica owns its normal sampler so the Box-Muller spare never leaks
-  // between RNG streams (keeps results reproducible per seed).
   const sampleNormal = createNormalSampler();
   const kiosksByCong = new Map<string, typeof input.kiosks>();
   for (const k of input.kiosks) {
@@ -97,21 +89,12 @@ function* simulateReplica(
   const totalRevenue = kiosks.reduce((s, k) => s + k.revenue, 0);
   const totalCost = kiosks.reduce((s, k) => s + k.cost, 0);
   const totalMargin = totalRevenue - totalCost;
-  const amortizationDays = totalMargin > 0 ? Math.max(1, Math.round((input.kiosks.reduce((s, k) => s + k.acquisitionPrice, 0) / totalMargin) * input.global.horizonDays)) : Number.POSITIVE_INFINITY;
-
+  const amortizationDays = totalMargin > 0
+    ? Math.max(1, Math.round((input.kiosks.reduce((s, k) => s + k.acquisitionPrice, 0) / totalMargin) * input.global.horizonDays))
+    : Number.POSITIVE_INFINITY;
   const feasible = totalMargin >= 0 && amortizationDays <= input.global.horizonDays;
 
-  return {
-    replica,
-    seed,
-    kiosks,
-    totalDevices,
-    totalRevenue,
-    totalCost,
-    totalMargin,
-    amortizationDays,
-    feasible,
-  };
+  return { replica, seed, kiosks, totalDevices, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
 }
 
 function overConfigWarnings(input: ScenarioInput): string[] {
@@ -120,7 +103,6 @@ function overConfigWarnings(input: ScenarioInput): string[] {
   for (const k of input.kiosks) {
     kiosksByCong.set(k.conglomerateId, (kiosksByCong.get(k.conglomerateId) ?? 0) + 1);
   }
-
   for (const c of input.conglomerates) {
     const expectedInterested = c.dailyDemand.mu * c.interestPct;
     const kioskCount = kiosksByCong.get(c.id) ?? 0;
@@ -130,23 +112,57 @@ function overConfigWarnings(input: ScenarioInput): string[] {
       warnings.push(`Posible sobreconfiguracion en ${c.nombre}: demanda potencial por kiosko ${expectedPerKiosk.toFixed(1)} < ${threshold.toFixed(1)}`);
     }
   }
-
   return warnings;
 }
 
+/** Accumulates per-replica scalars without storing replica objects. */
+class SimAccumulator {
+  margin = new OnlineStat();
+  revenue = new OnlineStat();
+  cost = new OnlineStat();
+  devices = new OnlineStat();
+  amortization = new OnlineStat();
+  feasibleCount = 0;
+
+  push(r: SimulationReplicaResult, horizonDays: number) {
+    this.margin.push(r.totalMargin);
+    this.revenue.push(r.totalRevenue);
+    this.cost.push(r.totalCost);
+    this.devices.push(r.totalDevices);
+    this.amortization.push(Number.isFinite(r.amortizationDays) ? r.amortizationDays : horizonDays * 10);
+    if (r.feasible) this.feasibleCount++;
+  }
+
+  summarize(input: ScenarioInput): SimulationResult["summary"] {
+    const s = (stat: OnlineStat) => {
+      const c = stat.ci95();
+      return { mean: stat.mean, ci95Lower: c.lower, ci95Upper: c.upper };
+    };
+    return {
+      totalMargin: s(this.margin),
+      totalRevenue: s(this.revenue),
+      totalCost: s(this.cost),
+      totalDevices: s(this.devices),
+      amortizationDays: s(this.amortization),
+      feasibleProbability: this.margin.count > 0 ? this.feasibleCount / this.margin.count : 0,
+    };
+  }
+}
+
+/** Synchronous engine — used in tests and the server route (blocking is acceptable). */
 export function runSimulation(input: ScenarioInput): SimulationResult {
   return runSimulationWithProgress(input);
 }
 
-/**
- * Synchronous engine. Drives every replica generator to completion in one pass.
- * Suitable for the server route and tests where blocking is acceptable.
- */
 export function runSimulationWithProgress(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
 ): SimulationResult {
-  const replicas: SimulationReplicaResult[] = [];
+  const acc = new SimAccumulator();
+  // Keep replica results only when there are few replicas (tests).
+  const keepReplicas = input.global.replicas <= 50;
+  const replicaResults: SimulationReplicaResult[] = [];
+
   for (let r = 0; r < input.global.replicas; r++) {
     const gen = simulateReplica(input, r + 1);
     let step = gen.next();
@@ -154,73 +170,51 @@ export function runSimulationWithProgress(
       onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
       step = gen.next();
     }
-    replicas.push(step.value);
+    acc.push(step.value, input.global.horizonDays);
+    if (keepReplicas) replicaResults.push(step.value);
   }
-
-  return summarize(input, replicas);
-}
-
-/**
- * Asynchronous engine for the browser. Identical math to the synchronous engine,
- * but it yields control back to the event loop on a time budget so React can
- * flush progress state and repaint the bar mid-run. Without yielding, the whole
- * simulation runs in one blocking tick and the progress bar jumps 0% -> 100%.
- */
-export async function runSimulationWithProgressAsync(
-  input: ScenarioInput,
-  onProgress?: (info: ProgressInfo) => void,
-  yieldEveryMs = 12,
-): Promise<SimulationResult> {
-  const replicas: SimulationReplicaResult[] = [];
-  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
-  let lastYield = now();
-
-  for (let r = 0; r < input.global.replicas; r++) {
-    const gen = simulateReplica(input, r + 1);
-    let step = gen.next();
-    while (!step.done) {
-      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
-      if (now() - lastYield >= yieldEveryMs) {
-        // Hand the thread back so queued state updates can paint.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        lastYield = now();
-      }
-      step = gen.next();
-    }
-    replicas.push(step.value);
-  }
-
-  return summarize(input, replicas);
-}
-
-function summarize(input: ScenarioInput, replicas: SimulationReplicaResult[]): SimulationResult {
-  const margins = replicas.map((r) => r.totalMargin);
-  const revenues = replicas.map((r) => r.totalRevenue);
-  const costs = replicas.map((r) => r.totalCost);
-  const devices = replicas.map((r) => r.totalDevices);
-  const amortizations = replicas.map((r) => (Number.isFinite(r.amortizationDays) ? r.amortizationDays : input.global.horizonDays * 10));
-  const feasibleProbability = replicas.filter((r) => r.feasible).length / replicas.length;
-
-  const mCi = ci95(margins);
-  const rCi = ci95(revenues);
-  const cCi = ci95(costs);
-  const dCi = ci95(devices);
-  const aCi = ci95(amortizations);
 
   return {
     scenario: input.scenario,
     runId: `${input.scenario}-${Date.now()}`,
     timestamp: new Date().toISOString(),
     input,
-    replicas,
-    summary: {
-      totalMargin: { mean: mean(margins), ci95Lower: mCi.lower, ci95Upper: mCi.upper },
-      totalRevenue: { mean: mean(revenues), ci95Lower: rCi.lower, ci95Upper: rCi.upper },
-      totalCost: { mean: mean(costs), ci95Lower: cCi.lower, ci95Upper: cCi.upper },
-      totalDevices: { mean: mean(devices), ci95Lower: dCi.lower, ci95Upper: dCi.upper },
-      amortizationDays: { mean: mean(amortizations), ci95Lower: aCi.lower, ci95Upper: aCi.upper },
-      feasibleProbability,
-    },
+    replicas: replicaResults,
+    summary: acc.summarize(input),
+    warnings: overConfigWarnings(input),
+  };
+}
+
+/**
+ * Async engine for the server-side SSE route.
+ * Yields to the Node.js event loop between replicas via setImmediate so the
+ * stream can flush progress events to the client without blocking I/O.
+ */
+export async function runSimulationAsync(
+  input: ScenarioInput,
+  onProgress?: (info: ProgressInfo) => void,
+): Promise<SimulationResult> {
+  const acc = new SimAccumulator();
+
+  for (let r = 0; r < input.global.replicas; r++) {
+    const gen = simulateReplica(input, r + 1);
+    let step = gen.next();
+    while (!step.done) {
+      onProgress?.({ ...step.value, totalReplicas: input.global.replicas });
+      step = gen.next();
+    }
+    acc.push(step.value, input.global.horizonDays);
+    // Yield to the event loop so Node can flush SSE chunks to the client.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  return {
+    scenario: input.scenario,
+    runId: `${input.scenario}-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    input,
+    replicas: [],
+    summary: acc.summarize(input),
     warnings: overConfigWarnings(input),
   };
 }

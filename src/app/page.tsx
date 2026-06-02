@@ -1,11 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readLastResult, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
-import { runSimulationWithProgressAsync } from "@/lib/sim/engine";
-import { validateScenario } from "@/lib/validation/scenario";
+import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
 import type { Conglomerate, Kiosk, ScenarioInput, SimulationResult } from "@/types/simulation";
 
 const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").then((m) => m.KioskLeafletMap), { ssr: false });
@@ -48,10 +46,9 @@ export default function Home() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft(savedDraft);
     }
-    const savedResult = readLastResult();
-    if (savedResult) {
-      setResult(savedResult);
-    }
+    // Purge any legacy result that may contain the full replicas array (pre-fix).
+    // We no longer restore the last result on mount — it only makes sense after a fresh run.
+    window.localStorage.removeItem(LAST_RESULT_KEY);
     setHistoryCount(readHistory().length);
   }, []);
 
@@ -72,7 +69,7 @@ export default function Home() {
         setKiosks(all);
       })
       .catch(() => undefined);
-  }, [draft.acquisitionPrice]);
+  }, []);
 
   useEffect(() => {
     saveScenarioDraft(draft);
@@ -82,7 +79,7 @@ export default function Home() {
     return draft.capacity > 0 && draft.horizonDays > 0 && draft.replicas > 0 && draft.serviceMinA < draft.serviceMinB && draft.valueSigma > 0;
   }, [draft]);
 
-  const onMapClick = (lat: number, lon: number) => {
+  const onMapClick = useCallback((lat: number, lon: number) => {
     const newKiosk: Kiosk = {
       id: `k-${Date.now()}`,
       nombre: `Kiosko manual ${kiosks.length + 1}`,
@@ -94,7 +91,7 @@ export default function Home() {
       acquisitionPrice: draft.acquisitionPrice,
     };
     setKiosks((prev) => [...prev, newKiosk]);
-  };
+  }, [kiosks.length, draft.acquisitionPrice]);
 
   const buildInput = (): ScenarioInput => ({
     scenario: "A",
@@ -115,48 +112,66 @@ export default function Home() {
 
   const runSimulation = async () => {
     const input = buildInput();
-    const validationErrors = validateScenario(input);
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors.map((e) => `${e.field}: ${e.message}`));
-      return;
-    }
-
-    const totalDays = Math.max(1, input.global.horizonDays);
-    const totalReplicas = Math.max(1, input.global.replicas);
-    const totalWorkUnits = totalDays * totalReplicas;
     setIsRunning(true);
     setProgressDay(0);
     setProgressReplica(0);
+    setErrors([]);
     setShowResultModal(false);
 
-    const startedAt = performance.now();
-    console.log(`[sim] inicio | replicas=${totalReplicas} dias=${totalDays} kioskos=${input.kiosks.length}`);
-
     try {
-      setErrors([]);
-      // Run the simulator locally and expose true execution progress (replica/day).
-      // The async engine yields to the event loop periodically so these state
-      // updates actually repaint the progress bar during the run.
-      let lastLoggedReplica = 0;
-      const simResult = await runSimulationWithProgressAsync(input, ({ replica, day }) => {
-        setProgressReplica(replica);
-        setProgressDay(day);
-        // Log once per replica to verify progress without flooding the console.
-        if (replica !== lastLoggedReplica && day === totalDays) {
-          lastLoggedReplica = replica;
-          const doneUnits = replica * totalDays;
-          const pct = ((doneUnits / totalWorkUnits) * 100).toFixed(1);
-          console.log(`[sim] replica ${replica}/${totalReplicas} completada | ${pct}% | t=${(performance.now() - startedAt).toFixed(0)}ms`);
-        }
+      const res = await fetch("/api/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
       });
-      saveHistoryEntry(simResult);
-      saveLastResult(simResult);
-      setHistoryCount(readHistory().length);
-      setResult(simResult);
-      setProgressReplica(totalReplicas);
-      setProgressDay(totalDays);
-      setShowResultModal(true);
-      console.log(`[sim] fin | t=${(performance.now() - startedAt).toFixed(0)}ms | margen medio=${simResult.summary.totalMargin.mean.toFixed(0)} | factible=${(simResult.summary.feasibleProbability * 100).toFixed(1)}%`);
+
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({ errors: ["Error de red"] }));
+        setErrors((err.errors ?? ["Error desconocido"]).map((e: { field?: string; message?: string } | string) =>
+          typeof e === "string" ? e : `${e.field}: ${e.message}`
+        ));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const chunk of parts) {
+          const eventLine = chunk.match(/^event: (\w+)/m);
+          const dataLine = chunk.match(/^data: (.+)/m);
+          if (!eventLine || !dataLine) continue;
+
+          const event = eventLine[1];
+          const data = JSON.parse(dataLine[1]);
+
+          if (event === "progress") {
+            setProgressReplica(data.replica as number);
+            setProgressDay(data.day as number);
+          } else if (event === "result" && data.ok) {
+            const simResult = data.result as SimulationResult;
+            saveHistoryEntry(simResult);
+            saveLastResult(simResult);
+            setHistoryCount(readHistory().length);
+            setResult(simResult);
+            setProgressReplica(input.global.replicas);
+            setProgressDay(input.global.horizonDays);
+            setShowResultModal(true);
+          } else if (event === "error") {
+            setErrors([data.message as string]);
+          }
+        }
+      }
+    } catch (err) {
+      setErrors([String(err)]);
     } finally {
       setTimeout(() => setIsRunning(false), 250);
     }
@@ -164,6 +179,7 @@ export default function Home() {
 
   const confirm = () => {
     const action = modal.action;
+    console.log(`[sim] confirm() accion=${action}`);
     setModal({ open: false, action: null });
     if (action === "run") void runSimulation();
     if (action === "clear") {
