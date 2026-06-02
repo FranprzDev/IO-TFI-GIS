@@ -1,9 +1,9 @@
 "use client";
 
-import { MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polygon, Rectangle, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { TUCUMAN_BOUNDS, TUCUMAN_CENTER } from "@/lib/geo/tucuman";
-import type { Kiosk } from "@/types/simulation";
+import type { DemandZone, Kiosk, VoronoiCell } from "@/types/simulation";
 
 const icon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -23,13 +23,20 @@ function ClickHandler({ onMapClick }: { onMapClick: (lat: number, lon: number) =
 
 export function KioskLeafletMap({
   kiosks,
+  demandZones,
+  voronoiCells,
+  highlightedKioskIds,
   onMapClick,
   className,
 }: {
   kiosks: Kiosk[];
+  demandZones?: DemandZone[];
+  voronoiCells?: VoronoiCell[];
+  highlightedKioskIds?: string[];
   onMapClick: (lat: number, lon: number) => void;
   className?: string;
 }) {
+  const highlighted = new Set(highlightedKioskIds ?? []);
   return (
     <MapContainer
       center={TUCUMAN_CENTER}
@@ -48,13 +55,45 @@ export function KioskLeafletMap({
         pathOptions={{ color: "#dc2626", weight: 2, fillColor: "#dc2626", fillOpacity: 0.04 }}
         interactive={false}
       />
+      {voronoiCells?.map((cell) => (
+        cell.points.length >= 3 ? (
+          <Polygon
+            key={`cell-${cell.kioskId}`}
+            positions={cell.points.map((point) => [point.lat, point.lon] as [number, number])}
+            pathOptions={{
+              color: highlighted.size === 0 || highlighted.has(cell.kioskId) ? "#00E699" : "#4B5563",
+              weight: highlighted.has(cell.kioskId) ? 3 : 1.5,
+              fillColor: highlighted.size === 0 || highlighted.has(cell.kioskId) ? "#00E699" : "#1F293D",
+              fillOpacity: highlighted.has(cell.kioskId) ? 0.18 : 0.08,
+            }}
+          />
+        ) : null
+      ))}
+      {demandZones?.map((zone) => (
+        <CircleMarker
+          key={zone.id}
+          center={[zone.lat, zone.lon]}
+          radius={3}
+          pathOptions={{ color: "#93C5FD", fillColor: "#93C5FD", fillOpacity: 0.7, weight: 1 }}
+        >
+          <Tooltip direction="top" offset={[0, -6]} opacity={1}>
+            <div className="text-xs">
+              <div className="font-semibold">{zone.nombre}</div>
+              <div>{zone.departamento}</div>
+              <div>Poblacion: {zone.population2022.toLocaleString("es-AR")}</div>
+            </div>
+          </Tooltip>
+        </CircleMarker>
+      ))}
       <ClickHandler onMapClick={onMapClick} />
       {kiosks.map((k) => (
-        <Marker key={k.id} position={[k.lat, k.lon]} icon={icon}>
+        <Marker key={k.id} position={[k.lat, k.lon]} icon={icon} opacity={k.active === false ? 0.35 : 1}>
           <Tooltip direction="top" offset={[0, -20]} opacity={1}>
             <div className="text-xs">
               <div className="font-semibold">{k.nombre}</div>
               <div>{k.calle || "Sin calle"}</div>
+              <div>Fuente: {k.source === "manual" ? "Manual" : "CSV"}</div>
+              <div>Estado: {k.active === false ? "Inactivo" : "Activo"}</div>
               <div>Lat: {k.lat.toFixed(6)}</div>
               <div>Lon: {k.lon.toFixed(6)}</div>
             </div>

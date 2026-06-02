@@ -1,4 +1,5 @@
 export type ScenarioKey = "A" | "B";
+export type KioskSource = "csv" | "manual";
 
 export interface UniformDistributionParams { kind: "uniform"; a: number; b: number }
 export interface NormalDistributionParams { kind: "normal"; mu: number; sigma: number }
@@ -18,11 +19,14 @@ export interface Kiosk {
   id: string;
   nombre: string;
   calle: string;
-  conglomerateId: string;
   lat: number;
   lon: number;
   chain: string;
   acquisitionPrice: number;
+  source: KioskSource;
+  active?: boolean;
+  locked?: boolean;
+  attractivenessWeight: number;
 }
 
 export interface GlobalParams {
@@ -34,6 +38,27 @@ export interface GlobalParams {
   serviceTime: UniformDistributionParams;
   deviceValue: NormalDistributionParams;
   operationCostPerDevice: number;
+  totalDailyDemand: NormalDistributionParams;
+  serviceDistanceKm: number;
+}
+
+export interface DemandZone {
+  id: string;
+  nombre: string;
+  departamento: string;
+  lat: number;
+  lon: number;
+  population2022: number;
+  density: number;
+  demandWeight: number;
+}
+
+export interface ScoreWeights {
+  margin: number;
+  capturedDemand: number;
+  coverage: number;
+  balance: number;
+  cannibalization: number;
 }
 
 export interface ScenarioInput {
@@ -41,6 +66,7 @@ export interface ScenarioInput {
   seed: number;
   conglomerates: Conglomerate[];
   kiosks: Kiosk[];
+  demandZones: DemandZone[];
   global: GlobalParams;
 }
 
@@ -73,6 +99,35 @@ export interface KpiSummary {
   ci95Upper: number;
 }
 
+export interface SpatialAssignment {
+  demandZoneId: string;
+  kioskId: string;
+  distanceKm: number;
+  demandWeight: number;
+}
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface VoronoiCell {
+  kioskId: string;
+  points: GeoPoint[];
+}
+
+export interface SpatialMetrics {
+  weightedDistanceKm: number;
+  coveredDemandPct: number;
+  capturedDemand: number;
+  loadBalanceScore: number;
+  cannibalizationPct: number;
+  incrementalDemandPct: number;
+  assignments: SpatialAssignment[];
+  voronoiCells: VoronoiCell[];
+  demandByKiosk?: Record<string, { kioskId: string; assignedDemand: number; effectiveDemand: number; assignmentCount: number }>;
+}
+
 export interface SimulationResult {
   scenario: ScenarioKey;
   runId: string;
@@ -88,6 +143,7 @@ export interface SimulationResult {
     feasibleProbability: number;
   };
   warnings: string[];
+  spatial?: SpatialMetrics;
 }
 
 export interface HistoryEntry {
@@ -97,4 +153,49 @@ export interface HistoryEntry {
   seed: number;
   summary: SimulationResult["summary"];
   warnings: string[];
+}
+
+export interface CandidateEvaluation {
+  kioskId: string;
+  nombre: string;
+  source: KioskSource;
+  chain: string;
+  scoreContribution: number;
+  assignedDemand: number;
+}
+
+export interface OptimizationRequest {
+  seed: number;
+  kiosks: Kiosk[];
+  demandZones: DemandZone[];
+  global: GlobalParams;
+  serviceTime: UniformDistributionParams;
+  deviceValue: NormalDistributionParams;
+  operationCostPerDevice: number;
+  minSites: number;
+  maxSites: number;
+  budgetCap: number | null;
+  scoreWeights: ScoreWeights;
+}
+
+export interface OptimizationScenarioSummary {
+  selectedKioskIds: string[];
+  score: number;
+  components: {
+    margin: number;
+    capturedDemand: number;
+    coverage: number;
+    balance: number;
+    cannibalization: number;
+  };
+  simulation: SimulationResult;
+  candidateEvaluations: CandidateEvaluation[];
+}
+
+export interface OptimizationResult {
+  runId: string;
+  timestamp: string;
+  request: OptimizationRequest;
+  best: OptimizationScenarioSummary;
+  topScenarios: OptimizationScenarioSummary[];
 }

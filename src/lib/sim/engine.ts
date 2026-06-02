@@ -1,13 +1,18 @@
 import { LcgRng } from "./rng";
 import { createNormalSampler, sampleUniform } from "./distributions";
-import { ci95, mean, OnlineStat } from "./stats";
-import type { KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
+import { OnlineStat } from "./stats";
+import { buildSpatialSnapshot } from "@/lib/spatial/voronoi";
+import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationReplicaResult, SimulationResult } from "../../types/simulation";
 
 export interface ProgressInfo {
   replica: number;
   day: number;
   totalReplicas: number;
   totalDays: number;
+}
+
+interface RunOptions {
+  includeReplicas?: boolean;
 }
 
 function* simulateReplica(
@@ -17,59 +22,55 @@ function* simulateReplica(
   const seed = input.seed + replica * 9973;
   const rng = new LcgRng(seed);
   const sampleNormal = createNormalSampler();
-  const kiosksByCong = new Map<string, typeof input.kiosks>();
-  for (const k of input.kiosks) {
-    const list = kiosksByCong.get(k.conglomerateId) ?? [];
-    list.push(k);
-    kiosksByCong.set(k.conglomerateId, list);
-  }
+  const activeKiosks = input.kiosks.filter((k) => k.active !== false);
+  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm);
+  const totalDemandWeight = Object.values(spatial.demandByKiosk).reduce((sum, item) => sum + item.effectiveDemand, 0);
+  const demandShareByKiosk = new Map(
+    activeKiosks.map((kiosk) => {
+      const assignedDemand = spatial.demandByKiosk[kiosk.id]?.effectiveDemand ?? 0;
+      const share = totalDemandWeight > 0 ? assignedDemand / totalDemandWeight : 0;
+      return [kiosk.id, share];
+    }),
+  );
 
   const acc = new Map<string, { devices: number; revenue: number; cost: number; service: number; slots: number; collections: number; usedDays: number; }>();
-  for (const kiosk of input.kiosks) {
+  for (const kiosk of activeKiosks) {
     acc.set(kiosk.id, { devices: 0, revenue: 0, cost: 0, service: 0, slots: 0, collections: 0, usedDays: 0 });
   }
 
   const threshold = Math.floor(input.global.capacityMaxDevices * 0.85);
 
   for (let day = 1; day <= input.global.horizonDays; day++) {
-    for (const c of input.conglomerates) {
-      const dailyFlow = Math.max(0, Math.round(sampleNormal(rng, c.dailyDemand.mu, c.dailyDemand.sigma)));
-      const interested = Math.round(dailyFlow * c.interestPct);
-      const kiosks = kiosksByCong.get(c.id) ?? [];
-      if (kiosks.length === 0) continue;
+    const totalInterested = Math.max(0, Math.round(sampleNormal(rng, input.global.totalDailyDemand.mu, input.global.totalDailyDemand.sigma)));
+    const arrivalsByKiosk = allocateDailyDemand(activeKiosks, totalInterested, demandShareByKiosk);
 
-      const perKiosk = Math.floor(interested / kiosks.length);
-      const remainder = interested % kiosks.length;
+    for (const kiosk of activeKiosks) {
+      const a = acc.get(kiosk.id)!;
+      const arrivals = arrivalsByKiosk.get(kiosk.id) ?? 0;
+      a.usedDays += 1;
 
-      for (let i = 0; i < kiosks.length; i++) {
-        const kiosk = kiosks[i];
-        const a = acc.get(kiosk.id)!;
-        const arrivals = perKiosk + (i < remainder ? 1 : 0);
-        a.usedDays += 1;
+      for (let j = 0; j < arrivals; j++) {
+        const serviceMin = sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
+        const value = Math.max(0, sampleNormal(rng, input.global.deviceValue.mu, input.global.deviceValue.sigma));
+        const dayCapacityLeft = input.global.capacityMaxDevices - a.slots;
+        if (dayCapacityLeft <= 0) continue;
 
-        for (let j = 0; j < arrivals; j++) {
-          const serviceMin = sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
-          const value = Math.max(0, sampleNormal(rng, input.global.deviceValue.mu, input.global.deviceValue.sigma));
-          const dayCapacityLeft = input.global.capacityMaxDevices - a.slots;
-          if (dayCapacityLeft <= 0) continue;
+        a.devices += 1;
+        a.revenue += value;
+        a.cost += input.global.operationCostPerDevice;
+        a.service += serviceMin;
+        a.slots += 1;
 
-          a.devices += 1;
-          a.revenue += value;
-          a.cost += input.global.operationCostPerDevice;
-          a.service += serviceMin;
-          a.slots += 1;
-
-          if (a.slots >= threshold) {
-            a.collections += 1;
-            a.slots = 0;
-          }
+        if (a.slots >= threshold) {
+          a.collections += 1;
+          a.slots = 0;
         }
       }
     }
     yield { replica, day, totalDays: input.global.horizonDays };
   }
 
-  const kiosks: KioskRunMetrics[] = input.kiosks.map((k) => {
+  const kiosks: KioskRunMetrics[] = activeKiosks.map((k) => {
     const v = acc.get(k.id)!;
     const capacityDays = v.usedDays * input.global.capacityMaxDevices;
     const utilization = capacityDays > 0 ? v.devices / capacityDays : 0;
@@ -90,7 +91,7 @@ function* simulateReplica(
   const totalCost = kiosks.reduce((s, k) => s + k.cost, 0);
   const totalMargin = totalRevenue - totalCost;
   const amortizationDays = totalMargin > 0
-    ? Math.max(1, Math.round((input.kiosks.reduce((s, k) => s + k.acquisitionPrice, 0) / totalMargin) * input.global.horizonDays))
+    ? Math.max(1, Math.round((activeKiosks.reduce((s, k) => s + k.acquisitionPrice, 0) / totalMargin) * input.global.horizonDays))
     : Number.POSITIVE_INFINITY;
   const feasible = totalMargin >= 0 && amortizationDays <= input.global.horizonDays;
 
@@ -99,20 +100,46 @@ function* simulateReplica(
 
 function overConfigWarnings(input: ScenarioInput): string[] {
   const warnings: string[] = [];
-  const kiosksByCong = new Map<string, number>();
-  for (const k of input.kiosks) {
-    kiosksByCong.set(k.conglomerateId, (kiosksByCong.get(k.conglomerateId) ?? 0) + 1);
-  }
-  for (const c of input.conglomerates) {
-    const expectedInterested = c.dailyDemand.mu * c.interestPct;
-    const kioskCount = kiosksByCong.get(c.id) ?? 0;
-    const expectedPerKiosk = kioskCount > 0 ? expectedInterested / kioskCount : 0;
+  const activeKiosks = input.kiosks.filter((k) => k.active !== false);
+  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm);
+  const totalWeight = Math.max(1, spatial.capturedDemand);
+
+  for (const kiosk of activeKiosks) {
+    const assignedDemand = spatial.demandByKiosk[kiosk.id]?.assignedDemand ?? 0;
+    const expectedPerDay = input.global.totalDailyDemand.mu * (assignedDemand / totalWeight);
     const threshold = input.global.capacityMaxDevices * 0.2;
-    if (kioskCount > 0 && expectedPerKiosk < threshold) {
-      warnings.push(`Posible sobreconfiguracion en ${c.nombre}: demanda potencial por kiosko ${expectedPerKiosk.toFixed(1)} < ${threshold.toFixed(1)}`);
+    if (expectedPerDay < threshold) {
+      warnings.push(`Posible sobreconfiguracion en ${kiosk.nombre}: demanda potencial diaria ${expectedPerDay.toFixed(1)} < ${threshold.toFixed(1)}`);
     }
   }
   return warnings;
+}
+
+function allocateDailyDemand(
+  kiosks: Kiosk[],
+  totalInterested: number,
+  demandShareByKiosk: Map<string, number>,
+): Map<string, number> {
+  const baseAssignments = kiosks.map((kiosk) => {
+    const exact = totalInterested * (demandShareByKiosk.get(kiosk.id) ?? 0);
+    const base = Math.floor(exact);
+    return {
+      kioskId: kiosk.id,
+      base,
+      fraction: exact - base,
+    };
+  });
+
+  const assigned = new Map<string, number>(baseAssignments.map((item) => [item.kioskId, item.base]));
+  let remainder = totalInterested - baseAssignments.reduce((sum, item) => sum + item.base, 0);
+
+  for (const item of baseAssignments.sort((a, b) => b.fraction - a.fraction)) {
+    if (remainder <= 0) break;
+    assigned.set(item.kioskId, (assigned.get(item.kioskId) ?? 0) + 1);
+    remainder -= 1;
+  }
+
+  return assigned;
 }
 
 /** Accumulates per-replica scalars without storing replica objects. */
@@ -133,7 +160,7 @@ class SimAccumulator {
     if (r.feasible) this.feasibleCount++;
   }
 
-  summarize(input: ScenarioInput): SimulationResult["summary"] {
+  summarize(): SimulationResult["summary"] {
     const s = (stat: OnlineStat) => {
       const c = stat.ci95();
       return { mean: stat.mean, ci95Lower: c.lower, ci95Upper: c.upper };
@@ -150,17 +177,17 @@ class SimAccumulator {
 }
 
 /** Synchronous engine — used in tests and the server route (blocking is acceptable). */
-export function runSimulation(input: ScenarioInput): SimulationResult {
-  return runSimulationWithProgress(input);
+export function runSimulation(input: ScenarioInput, options?: RunOptions): SimulationResult {
+  return runSimulationWithProgress(input, undefined, options);
 }
 
 export function runSimulationWithProgress(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
+  options?: RunOptions,
 ): SimulationResult {
   const acc = new SimAccumulator();
-  // Keep replica results only when there are few replicas (tests).
-  const keepReplicas = input.global.replicas <= 50;
+  const keepReplicas = options?.includeReplicas ?? (input.global.replicas <= 50);
   const replicaResults: SimulationReplicaResult[] = [];
 
   for (let r = 0; r < input.global.replicas; r++) {
@@ -180,8 +207,9 @@ export function runSimulationWithProgress(
     timestamp: new Date().toISOString(),
     input,
     replicas: replicaResults,
-    summary: acc.summarize(input),
+    summary: acc.summarize(),
     warnings: overConfigWarnings(input),
+    spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
   };
 }
 
@@ -214,7 +242,8 @@ export async function runSimulationAsync(
     timestamp: new Date().toISOString(),
     input,
     replicas: [],
-    summary: acc.summarize(input),
+    summary: acc.summarize(),
     warnings: overConfigWarnings(input),
+    spatial: buildSpatialSnapshot(input.kiosks.filter((k) => k.active !== false), input.demandZones, input.global.serviceDistanceKm),
   };
 }
