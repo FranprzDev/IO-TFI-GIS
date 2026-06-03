@@ -25,8 +25,8 @@ export function saveHistoryEntry(result: SimulationResult): void {
     timestamp: result.timestamp,
     scenario: result.scenario,
     seed: result.input.seed,
+    horizonDays: result.input.global.horizonDays,
     summary: result.summary,
-    warnings: result.warnings,
   };
   const next = [entry, ...current].slice(0, 100);
   try {
