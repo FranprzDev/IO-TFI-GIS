@@ -181,6 +181,15 @@ export default function Home() {
     return result?.spatial?.voronoiCells ?? optimization?.best.spatial.voronoiCells ?? [];
   }, [activeOptimizationScenario, optimization, result, selectedOptimizationIds, sidebarTab]);
 
+  // Highlight exactly the kiosks of the cells being shown, so the rendered
+  // Voronoi cells are always coloured. Tying the highlight to the optimization
+  // scenario instead left simulation-result cells (a different/larger set)
+  // rendered in the muted "not highlighted" gray.
+  const highlightedKioskIds = useMemo(
+    () => mapVoronoiCells.map((cell) => cell.kioskId),
+    [mapVoronoiCells],
+  );
+
   const valid = useMemo(() => {
     return draft.horizonDays > 0
       && draft.serviceMinA < draft.serviceMinB
@@ -678,7 +687,7 @@ export default function Home() {
               kiosks={kiosks}
               demandZones={demandZones}
               voronoiCells={mapVoronoiCells}
-              highlightedKioskIds={selectedOptimizationIds.length > 0 ? selectedOptimizationIds : (activeOptimizationScenario?.selectedKioskIds ?? [])}
+              highlightedKioskIds={highlightedKioskIds}
               focusHighlightedOnly={sidebarTab === "optimization" || selectedOptimizationIds.length > 0}
               highlightColor="#22C55E"
               onMapClick={onMapClick}

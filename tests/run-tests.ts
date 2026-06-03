@@ -63,6 +63,9 @@ assert.ok(validateScenario({ ...base, global: { ...base.global, horizonDays: 0 }
 const result = runSimulation(base);
 assert.ok(result.summary.totalRevenue.mean > 0);
 assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci95Lower);
+// The simulation result must always carry the spatial Voronoi cells so the map
+// can render the partition (one cell per active kiosk) after running.
+assert.ok((result.spatial?.voronoiCells.length ?? 0) >= result.kiosks.length);
 
 // Revenue model: Binomial acceptance (~60%) and refurbish/scrap split (~60/40).
 (function testRevenueModel() {
