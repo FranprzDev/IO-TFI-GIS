@@ -1,12 +1,27 @@
-"use client";
+﻿"use client";
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useTucumanKioskPlacement } from "@/hooks/useTucumanKioskPlacement";
-import { HISTORY_KEY, LAST_RESULT_KEY, SCENARIO_KEY, readHistory, readScenarioDraft, saveHistoryEntry, saveLastResult, saveScenarioDraft } from "@/lib/storage/history";
+import {
+  HISTORY_KEY,
+  LAST_RESULT_KEY,
+  OPTIMIZATION_KEY,
+  OPTIMIZATION_SELECTION_KEY,
+  SCENARIO_KEY,
+  readOptimizationResult,
+  readOptimizationSelection,
+  readScenarioDraft,
+  saveHistoryEntry,
+  saveLastResult,
+  saveOptimizationResult,
+  saveOptimizationSelection,
+  saveScenarioDraft,
+} from "@/lib/storage/history";
 import type {
   DemandZone,
   Kiosk,
@@ -22,19 +37,14 @@ const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").the
 
 interface Draft {
   horizonDays: number;
-  capacity: number;
   serviceMinA: number;
   serviceMinB: number;
   valueMu: number;
   valueSigma: number;
   operationCost: number;
-  acquisitionPrice: number;
-  totalDemandMu: number;
-  totalDemandSigma: number;
   serviceDistanceKm: number;
   minSites: number;
   maxSites: number;
-  budgetCap: number;
 }
 
 interface BootstrapData {
@@ -46,19 +56,14 @@ type SidebarTab = "simulation" | "optimization" | "settings";
 
 const baseDraft: Draft = {
   horizonDays: 180,
-  capacity: 100,
   serviceMinA: 4,
   serviceMinB: 10,
-  valueMu: 120,
-  valueSigma: 40,
-  operationCost: 22,
-  acquisitionPrice: 6500,
-  totalDemandMu: 110,
-  totalDemandSigma: 18,
+  valueMu: 168000,
+  valueSigma: 56000,
+  operationCost: 30800,
   serviceDistanceKm: 10,
   minSites: 3,
   maxSites: 6,
-  budgetCap: 0,
 };
 
 function toDemandWeight(population2022: number, density: number) {
@@ -73,18 +78,17 @@ export default function Home() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("simulation");
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
-  const [historyCount, setHistoryCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [progressDay, setProgressDay] = useState(0);
   const [optimizationPct, setOptimizationPct] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
-  const [modal, setModal] = useState<{ open: boolean; action: "run" | "clear" | "optimize" | null }>({ open: false, action: null });
+  const [modal, setModal] = useState<{ open: boolean; action: "run" | "optimize" | "clear" | null }>({ open: false, action: null });
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
-  const { placeKiosk } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
+  const { placeKiosk } = useTucumanKioskPlacement(setKiosks);
 
-  // Hydrate persisted values after mount only — reading localStorage during
+  // Hydrate persisted values after mount only â€” reading localStorage during
   // render would make the server and client HTML disagree (hydration error).
   // Setting state here on mount is the intended hydration-safe pattern, so the
   // cascading-render lint rule is deliberately suppressed for these two reads.
@@ -93,7 +97,10 @@ export default function Home() {
     const stored = readScenarioDraft<Draft>();
     /* eslint-disable react-hooks/set-state-in-effect */
     if (stored) setDraft((prev) => ({ ...prev, ...stored }));
-    setHistoryCount(readHistory().length);
+    const savedOptimization = readOptimizationResult();
+    if (savedOptimization) setOptimization(savedOptimization);
+    const savedSelection = readOptimizationSelection();
+    if (savedSelection.length > 0) setSelectedOptimizationIds(savedSelection);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -108,7 +115,6 @@ export default function Home() {
           chain: k.cadena || "Gobierno",
           lat: k.latitud,
           lon: k.longitud,
-          acquisitionPrice: baseDraft.acquisitionPrice,
           source: "csv",
           active: true,
           attractivenessWeight: 1,
@@ -133,31 +139,40 @@ export default function Home() {
   }, [draft]);
 
   const activeKiosks = useMemo(() => kiosks.filter((kiosk) => kiosk.active !== false), [kiosks]);
-  const mapVoronoiCells: VoronoiCell[] = useMemo(() => {
-    if (optimization?.best?.simulation.spatial && selectedOptimizationIds.length > 0) {
-      const scenario = optimization.topScenarios.find((item) => item.selectedKioskIds.join(",") === selectedOptimizationIds.join(","));
-      return scenario?.simulation.spatial?.voronoiCells ?? optimization.best.simulation.spatial.voronoiCells;
+  const optimizableKioskCount = kiosks.length;
+  const activeOptimizationScenario = useMemo(() => {
+    if (!optimization) return null;
+    if (selectedOptimizationIds.length > 0) {
+      return optimization.topScenarios.find((item) => item.selectedKioskIds.join(",") === selectedOptimizationIds.join(",")) ?? optimization.best;
     }
-    return result?.spatial?.voronoiCells ?? optimization?.best.simulation.spatial?.voronoiCells ?? [];
-  }, [optimization, result, selectedOptimizationIds]);
+    return optimization.best;
+  }, [optimization, selectedOptimizationIds]);
+  const mapVoronoiCells: VoronoiCell[] = useMemo(() => {
+    if (activeOptimizationScenario?.spatial) {
+      if (sidebarTab === "optimization") {
+        return activeOptimizationScenario.spatial.voronoiCells;
+      }
+      if (sidebarTab === "simulation" && selectedOptimizationIds.length > 0 && !result) {
+        return activeOptimizationScenario.spatial.voronoiCells;
+      }
+    }
+    return result?.spatial?.voronoiCells ?? optimization?.best.spatial.voronoiCells ?? [];
+  }, [activeOptimizationScenario, optimization, result, selectedOptimizationIds, sidebarTab]);
 
   const valid = useMemo(() => {
-    return draft.capacity > 0
-      && draft.horizonDays > 0
+    return draft.horizonDays > 0
       && draft.serviceMinA < draft.serviceMinB
       && draft.valueSigma > 0
-      && draft.totalDemandMu > 0
-      && draft.totalDemandSigma > 0
       && draft.serviceDistanceKm > 0
       && draft.minSites > 0
-      && draft.maxSites >= draft.minSites;
-  }, [draft]);
+      && optimizableKioskCount >= draft.minSites;
+  }, [draft, optimizableKioskCount]);
 
   const onMapClick = (lat: number, lon: number) => {
     const placed = placeKiosk(lat, lon);
     if (!placed) {
-      toast.error("No puedes poner un kiosco afuera de Tucumán", {
-        description: "Cada marcador es un kiosco y debe quedar dentro de los límites de la provincia.",
+      toast.error("No puedes poner un kiosco afuera de Tucuman", {
+        description: "Cada marcador es un kiosco y debe quedar dentro de los limites de la provincia.",
       });
     }
   };
@@ -167,7 +182,6 @@ export default function Home() {
     const scenarioKiosks = kiosks
       .map((kiosk) => ({
         ...kiosk,
-        acquisitionPrice: draft.acquisitionPrice,
         active: selected ? selected.has(kiosk.id) : kiosk.active !== false,
       }))
       .filter((kiosk) => kiosk.active !== false);
@@ -179,14 +193,12 @@ export default function Home() {
       kiosks: scenarioKiosks,
       demandZones,
       global: {
-        capacityMaxDevices: draft.capacity,
         horizonDays: draft.horizonDays,
         confidenceLevel: 0.95,
         warmupDays: 0,
         serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
         deviceValue: { kind: "normal", mu: draft.valueMu, sigma: draft.valueSigma },
         operationCostPerDevice: draft.operationCost,
-        totalDailyDemand: { kind: "normal", mu: draft.totalDemandMu, sigma: draft.totalDemandSigma },
         serviceDistanceKm: draft.serviceDistanceKm,
       },
     };
@@ -195,35 +207,30 @@ export default function Home() {
   function buildOptimizationRequest(): OptimizationRequest {
     return {
       seed: Date.now(),
-      kiosks: kiosks.map((kiosk) => ({ ...kiosk, acquisitionPrice: draft.acquisitionPrice, active: true })),
+      kiosks: kiosks.map((kiosk) => ({ ...kiosk, active: true })),
       demandZones,
       global: buildInput().global,
       serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
       deviceValue: { kind: "normal", mu: draft.valueMu, sigma: draft.valueSigma },
       operationCostPerDevice: draft.operationCost,
       minSites: draft.minSites,
-      maxSites: draft.maxSites,
-      budgetCap: draft.budgetCap > 0 ? draft.budgetCap : null,
+      maxSites: optimizableKioskCount,
       scoreWeights: {
-        margin: 0.3,
-        capturedDemand: 0.2,
-        coverage: 0.2,
-        balance: 0.15,
+        capturedDemand: 0.35,
+        coverage: 0.3,
+        balance: 0.2,
         cannibalization: 0.15,
       },
     };
   }
 
   function applyOptimizedScenario(summary: OptimizationScenarioSummary) {
-    const selected = new Set(summary.selectedKioskIds);
     setSelectedOptimizationIds(summary.selectedKioskIds);
-    setKiosks((prev) => prev.map((kiosk) => ({ ...kiosk, active: selected.has(kiosk.id) })));
-    setResult(summary.simulation);
-    setShowResultModal(true);
+    saveOptimizationSelection(summary.selectedKioskIds);
   }
 
   async function runSimulation() {
-    const input = buildInput();
+    const input = buildInput(selectedOptimizationIds.length > 0 ? selectedOptimizationIds : undefined);
     setIsRunning(true);
     setProgressDay(0);
     setErrors([]);
@@ -268,7 +275,6 @@ export default function Home() {
             const simResult = data.result as SimulationResult;
             saveHistoryEntry(simResult);
             saveLastResult(simResult);
-            setHistoryCount(readHistory().length);
             setResult(simResult);
             setProgressDay(input.global.horizonDays);
             setShowResultModal(true);
@@ -327,7 +333,9 @@ export default function Home() {
           } else if (event === "result" && data.ok) {
             const optimizationResult = data.result as OptimizationResult;
             setOptimization(optimizationResult);
-            applyOptimizedScenario(optimizationResult.best);
+            saveOptimizationResult(optimizationResult);
+            setSelectedOptimizationIds([]);
+            saveOptimizationSelection([]);
             setOptimizationPct(100);
           } else if (event === "error") {
             setErrors([data.message as string]);
@@ -350,7 +358,8 @@ export default function Home() {
       window.localStorage.removeItem(HISTORY_KEY);
       window.localStorage.removeItem(SCENARIO_KEY);
       window.localStorage.removeItem(LAST_RESULT_KEY);
-      setHistoryCount(0);
+      window.localStorage.removeItem(OPTIMIZATION_KEY);
+      window.localStorage.removeItem(OPTIMIZATION_SELECTION_KEY);
       setResult(null);
       setOptimization(null);
       setSelectedOptimizationIds([]);
@@ -360,60 +369,99 @@ export default function Home() {
 
   const totalWork = Math.max(1, draft.horizonDays);
   const progressPct = Math.min(100, (Math.min(progressDay, draft.horizonDays) / totalWork) * 100);
+  const modalTitle = modal.action === "optimize"
+    ? "¿Estás seguro de optimizar la red?"
+    : modal.action === "run"
+      ? "¿Estás seguro de ejecutar la simulación?"
+      : "¿Estás seguro?";
+  const activeProgress = isOptimizing
+    ? {
+        title: "Optimizacion",
+        value: `${optimizationPct.toFixed(0)}%`,
+        body: <ProgressBar pct={optimizationPct} />,
+      }
+    : isRunning
+      ? {
+          title: "Simulacion",
+          value: `${progressPct.toFixed(1)}%`,
+          body: (
+            <>
+              Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
+              <ProgressBar pct={progressPct} />
+            </>
+          ),
+        }
+      : null;
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      <ConfirmModal open={modal.open} title="Estas seguro?" onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
+      <ConfirmModal open={modal.open} title={modalTitle} onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
       <ResultModal open={showResultModal} result={result} onClose={() => setShowResultModal(false)} />
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[400px_1fr]">
-        <aside className="border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+        <aside className="flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
           <h1 className="text-xl font-bold">Simulador ecoATM</h1>
           <p className="text-sm text-[var(--text-secondary)]">Voronoi + optimizacion heuristica sobre kioskos CSV y manuales.</p>
 
           <section className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-1">
             <div className="grid grid-cols-3 gap-1">
+              <TabButton active={sidebarTab === "optimization"} onClick={() => setSidebarTab("optimization")}>
+                Optimizacion
+              </TabButton>
               <TabButton active={sidebarTab === "simulation"} onClick={() => setSidebarTab("simulation")}>
                 Simulacion
               </TabButton>
               <TabButton active={sidebarTab === "settings"} onClick={() => setSidebarTab("settings")} icon={<GearIcon />}>
                 Configuracion
               </TabButton>
-              <TabButton active={sidebarTab === "optimization"} onClick={() => setSidebarTab("optimization")}>
-                Optimizacion
-              </TabButton>
             </div>
           </section>
 
-          <section className="mt-4">
+          <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-2">
             {sidebarTab === "simulation" && (
               <div className="space-y-3">
                 <p className="text-sm text-[var(--text-secondary)]">Corridas directas del escenario cargado.</p>
+                {selectedOptimizationIds.length > 0 && (
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-sm">
+                    <p className="font-medium">Propuesta importada</p>
+                    <p className="mt-1 text-[var(--text-secondary)]">{selectedOptimizationIds.length} zonas seleccionadas desde optimización.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedOptimizationIds([]);
+                        saveOptimizationSelection([]);
+                      }}
+                      className="mt-2 rounded border border-[var(--border)] px-3 py-1 text-xs"
+                    >
+                      Quitar propuesta
+                    </button>
+                  </div>
+                )}
                 <button type="button" disabled={!valid || isRunning || activeKiosks.length === 0} onClick={() => setModal({ open: true, action: "run" })} className="w-full rounded bg-[var(--btn-primary)] px-3 py-2 font-semibold text-black disabled:opacity-40">
                   Ejecutar simulacion
                 </button>
                 <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">
                   Limpiar historial
                 </button>
-                <div className="rounded border border-[var(--border)] p-3 text-sm">
-                  <p>Candidatos: {kiosks.length}</p>
-                  <p>Activos: {activeKiosks.length}</p>
-                  <p>Zonas de demanda: {demandZones.length}</p>
-                  <p>Historial: {historyCount}</p>
-                </div>
               </div>
             )}
 
             {sidebarTab === "optimization" && (
               <div className="space-y-3">
                 <p className="text-sm text-[var(--text-secondary)]">Busqueda de la mejor configuracion factible.</p>
-                <button type="button" disabled={!valid || isOptimizing || kiosks.length === 0 || demandZones.length === 0} onClick={() => setModal({ open: true, action: "optimize" })} className="w-full rounded bg-[var(--accent)] px-3 py-2 font-semibold text-black disabled:opacity-40">
+                <button
+                  type="button"
+                  disabled={!valid || isOptimizing || kiosks.length === 0 || demandZones.length === 0}
+                  onClick={() => setModal({ open: true, action: "optimize" })}
+                  className="w-full rounded bg-[var(--accent)] px-3 py-2 font-semibold text-black disabled:opacity-40"
+                >
                   Optimizar red
                 </button>
-                <p className="text-xs text-[var(--text-secondary)]">Score balanceado: margen 30%, demanda capturada 20%, cobertura 20%, balance 15%, canibalizacion 15%.</p>
                 <div className="rounded border border-[var(--border)] p-3 text-sm">
-                  <p>Min kioskos: {draft.minSites}</p>
-                  <p>Max kioskos: {draft.maxSites}</p>
-                  <p>Budget cap: {draft.budgetCap > 0 ? draft.budgetCap : "Sin tope"}</p>
+                  <NumberField label="Min kioskos" value={draft.minSites} min={1} max={optimizableKioskCount} onChange={(value) => setDraft({ ...draft, minSites: Math.min(value, optimizableKioskCount) })} />
+                  <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Max kioskos</div>
+                    <div className="mt-1 font-semibold">{optimizableKioskCount}</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -424,9 +472,12 @@ export default function Home() {
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
                   <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Parametros base</h2>
                   <NumberField label="Horizonte (dias)" value={draft.horizonDays} min={1} max={3650} onChange={(value) => setDraft({ ...draft, horizonDays: value })} />
-                  <NumberField label="Capacidad por kiosko" value={draft.capacity} min={1} max={1000} onChange={(value) => setDraft({ ...draft, capacity: value })} />
-                  <NumberField label="Precio por kiosko" value={draft.acquisitionPrice} min={0} max={100000} onChange={(value) => setDraft({ ...draft, acquisitionPrice: value })} />
                   <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Costos por kiosko (fijos, en ARS)</div>
+                    <div className="mt-1 font-semibold">Adquisición: $28.000.000 <span className="font-normal text-[var(--text-secondary)]">(≈ USD 20.000)</span></div>
+                    <div className="font-semibold">Mantenimiento: $600.000 / 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 400)</span></div>
+                  </div>
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
@@ -444,39 +495,29 @@ export default function Home() {
                     distribution="Normal"
                     tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
                   >
-                    <NumberField label="Valor mu" value={draft.valueMu} min={0} max={1000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
-                    <NumberField label="Valor sigma" value={draft.valueSigma} min={1} max={1000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
+                    <NumberField label="Valor mu (ARS)" value={draft.valueMu} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
+                    <NumberField label="Valor sigma (ARS)" value={draft.valueSigma} min={1} max={100000000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
                   </DistributionField>
-                  <DistributionField
-                    title="Demanda total"
-                    distribution="Normal"
-                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
-                  >
-                    <NumberField label="Demanda total mu" value={draft.totalDemandMu} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandMu: value })} disabled />
-                    <NumberField label="Demanda total sigma" value={draft.totalDemandSigma} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandSigma: value })} disabled />
-                  </DistributionField>
-                  <NumberField label="Costo operativo" value={draft.operationCost} min={0} max={1000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Llegada de usuarios (Poisson)</div>
+                    <div className="mt-1 font-semibold">λ = 5 usuarios/hora por kiosko</div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Valor fijo.</div>
+                  </div>
+                  <NumberField label="Costo operativo por dispositivo (ARS)" value={draft.operationCost} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
                   <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Restricciones</h2>
-                  <NumberField label="Min kioskos" value={draft.minSites} min={1} max={20} onChange={(value) => setDraft({ ...draft, minSites: value })} />
-                  <NumberField label="Max kioskos" value={draft.maxSites} min={draft.minSites} max={20} onChange={(value) => setDraft({ ...draft, maxSites: value })} />
-                  <NumberField label="Budget cap" value={draft.budgetCap} min={0} max={10000000} onChange={(value) => setDraft({ ...draft, budgetCap: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Max kioskos efectivos</div>
+                    <div className="mt-1 font-semibold">{optimizableKioskCount}</div>
+                  </div>
                 </section>
               </div>
             )}
-          </section>
+          </div>
 
-          <section className="mt-4 text-sm">
-            <p>Candidatos: {kiosks.length}</p>
-            <p>Activos: {activeKiosks.length}</p>
-            <p>Zonas de demanda: {demandZones.length}</p>
-            <p>Historial: {historyCount}</p>
-            <p>Umbral operativo: {Math.floor(draft.capacity * 0.85)} dispositivos</p>
-          </section>
-
-          {optimization && (
+          {sidebarTab === "optimization" && optimization && (
             <section className="mt-4 space-y-2 rounded border border-[var(--border)] p-3 text-sm">
               <h2 className="font-semibold">Top escenarios</h2>
               {optimization.topScenarios.map((scenario, index) => (
@@ -487,11 +528,11 @@ export default function Home() {
                   className={`w-full rounded border px-3 py-2 text-left ${selectedOptimizationIds.join(",") === scenario.selectedKioskIds.join(",") ? "border-[var(--accent)] bg-[var(--btn-secondary)]" : "border-[var(--border)]"}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span>#{index + 1} - {scenario.selectedKioskIds.length} kioskos</span>
+                    <span>#{index + 1} - {scenario.selectedKioskIds.length} kioscos</span>
                     <span>{scenario.score.toFixed(3)}</span>
                   </div>
                   <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                    Margen {scenario.simulation.summary.totalMargin.mean.toFixed(0)} | Cobertura {(((scenario.simulation.spatial?.coveredDemandPct ?? 0) * 100)).toFixed(1)}%
+                    Cobertura {((scenario.spatial.coveredDemandPct * 100)).toFixed(1)}% | Distancia {(scenario.spatial.weightedDistanceKm).toFixed(2)} km
                   </div>
                 </button>
               ))}
@@ -500,31 +541,22 @@ export default function Home() {
         </aside>
 
         <main className="flex min-h-screen flex-col p-4">
-          <div className="mb-4 grid gap-4 lg:grid-cols-2">
-            <ProgressCard
-              title="Simulacion"
-              subtitle={isRunning ? "Ejecutando simulacion..." : "Listo para ejecutar"}
-              value={`${progressPct.toFixed(1)}%`}
-            >
-              Dia {Math.min(progressDay, draft.horizonDays)} / {draft.horizonDays}
-              <ProgressBar pct={progressPct} />
-            </ProgressCard>
-            <ProgressCard
-              title="Optimizacion"
-              subtitle={isOptimizing ? "Buscando mejor configuracion..." : "Sin optimizacion en curso"}
-              value={`${optimizationPct.toFixed(0)}%`}
-            >
-              Mejor escenario actual: {optimization?.best.selectedKioskIds.length ?? 0} kioskos
-              <ProgressBar pct={optimizationPct} />
-            </ProgressCard>
-          </div>
+          {activeProgress && (
+            <div className="mb-4">
+              <ProgressCard title={activeProgress.title} value={activeProgress.value}>
+                {activeProgress.body}
+              </ProgressCard>
+            </div>
+          )}
 
           <div className="min-h-0 flex-1">
             <KioskLeafletMap
               kiosks={kiosks}
               demandZones={demandZones}
               voronoiCells={mapVoronoiCells}
-              highlightedKioskIds={selectedOptimizationIds}
+              highlightedKioskIds={activeOptimizationScenario?.selectedKioskIds ?? []}
+              focusHighlightedOnly={sidebarTab === "optimization" || selectedOptimizationIds.length > 0}
+              highlightColor="#22C55E"
               onMapClick={onMapClick}
               className="h-full w-full rounded-xl border border-[var(--border)]"
             />
@@ -639,12 +671,10 @@ function GearIcon() {
 
 function ProgressCard({
   title,
-  subtitle,
   value,
   children,
 }: {
   title: string;
-  subtitle: string;
   value: string;
   children: ReactNode;
 }) {
@@ -654,7 +684,6 @@ function ProgressCard({
         <span className="text-[var(--text-secondary)]">{title}</span>
         <span className="font-mono">{value}</span>
       </div>
-      <div className="text-xs text-[var(--text-secondary)]">{subtitle}</div>
       <div className="mt-2 text-sm">{children}</div>
     </div>
   );
@@ -677,9 +706,9 @@ function ErrorPanel({ messages }: { messages: string[] }) {
 }
 
 function ResultModal({ open, result, onClose }: { open: boolean; result: SimulationResult | null; onClose: () => void }) {
-  if (!open || !result) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  if (!open || !result || typeof document === "undefined") return null;
+  return createPortal((
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-6 text-[var(--text-primary)]">
         <div className="flex items-start justify-between gap-4">
           <h3 className="text-lg font-semibold">Resultado simulacion</h3>
@@ -704,5 +733,6 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
+

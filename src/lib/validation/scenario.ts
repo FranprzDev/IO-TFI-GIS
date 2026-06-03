@@ -15,12 +15,10 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
   if (!Number.isInteger(input.seed) || input.seed <= 0) errors.push({ field: "seed", message: "Seed debe ser entero positivo" });
 
   const g = input.global;
-  if (!Number.isInteger(g.capacityMaxDevices) || g.capacityMaxDevices <= 0) errors.push({ field: "global.capacityMaxDevices", message: "Capacidad debe ser entero > 0" });
   if (!Number.isInteger(g.horizonDays) || g.horizonDays <= 0) errors.push({ field: "global.horizonDays", message: "Horizonte debe ser entero > 0" });
   if (!finite(g.confidenceLevel) || g.confidenceLevel <= 0 || g.confidenceLevel >= 1) errors.push({ field: "global.confidenceLevel", message: "Nivel de confianza debe estar entre 0 y 1" });
   if (!Number.isInteger(g.warmupDays) || g.warmupDays < 0) errors.push({ field: "global.warmupDays", message: "Warm-up debe ser entero >= 0" });
   if (!finite(g.operationCostPerDevice) || g.operationCostPerDevice < 0) errors.push({ field: "global.operationCostPerDevice", message: "Costo por dispositivo debe ser >= 0" });
-  if (!finite(g.totalDailyDemand.mu) || !finite(g.totalDailyDemand.sigma) || g.totalDailyDemand.sigma <= 0) errors.push({ field: "global.totalDailyDemand", message: "Demanda diaria requiere mu finito y sigma > 0" });
   if (!finite(g.serviceDistanceKm) || g.serviceDistanceKm <= 0) errors.push({ field: "global.serviceDistanceKm", message: "Distancia de servicio debe ser > 0" });
 
   if (!finite(g.serviceTime.a) || !finite(g.serviceTime.b) || g.serviceTime.a >= g.serviceTime.b) errors.push({ field: "global.serviceTime", message: "Uniforme servicio requiere a < b" });
@@ -42,7 +40,6 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
     if (!finite(k.lat) || k.lat < -90 || k.lat > 90) errors.push({ field: `kiosk.${k.id}.lat`, message: "Latitud invalida" });
     if (!finite(k.lon) || k.lon < -180 || k.lon > 180) errors.push({ field: `kiosk.${k.id}.lon`, message: "Longitud invalida" });
     if (finite(k.lat) && finite(k.lon) && !isWithinTucumanBounds(k.lat, k.lon)) errors.push({ field: `kiosk.${k.id}.location`, message: "Kiosko fuera de Tucuman" });
-    if (!finite(k.acquisitionPrice) || k.acquisitionPrice < 0) errors.push({ field: `kiosk.${k.id}.acquisitionPrice`, message: "Precio invalido" });
     if (!finite(k.attractivenessWeight) || k.attractivenessWeight <= 0) errors.push({ field: `kiosk.${k.id}.attractivenessWeight`, message: "Atractivo debe ser > 0" });
   }
 

@@ -7,7 +7,6 @@ import type { Kiosk } from "@/types/simulation";
 
 export function useTucumanKioskPlacement(
   setKiosks: Dispatch<SetStateAction<Kiosk[]>>,
-  acquisitionPrice: number,
 ) {
   const [placementError, setPlacementError] = useState<string | null>(null);
 
@@ -27,7 +26,6 @@ export function useTucumanKioskPlacement(
           chain: "Gobierno",
           lat,
           lon,
-          acquisitionPrice,
           source: "manual",
           active: true,
           attractivenessWeight: 1,
@@ -36,7 +34,7 @@ export function useTucumanKioskPlacement(
       setPlacementError(null);
       return true;
     },
-    [acquisitionPrice, setKiosks],
+    [setKiosks],
   );
 
   const clearPlacementError = useCallback(() => setPlacementError(null), []);

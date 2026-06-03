@@ -36,26 +36,24 @@ const base: ScenarioInput = {
   scenario: "A",
   seed: 123,
   conglomerates: [],
-  kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", lat: -26.8, lon: -65.2, chain: "Gobierno", acquisitionPrice: 7000, source: "csv", active: true, attractivenessWeight: 1 }],
+  kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", lat: -26.8, lon: -65.2, chain: "Gobierno", source: "csv", active: true, attractivenessWeight: 1 }],
   demandZones: [
     { id: "z1", nombre: "zona 1", departamento: "Capital", lat: -26.8, lon: -65.2, population2022: 10000, density: 3500, demandWeight: 10000 },
     { id: "z2", nombre: "zona 2", departamento: "Capital", lat: -26.82, lon: -65.24, population2022: 8000, density: 2800, demandWeight: 8000 },
   ],
   global: {
-    capacityMaxDevices: 100,
     horizonDays: 90,
     confidenceLevel: 0.95,
     warmupDays: 0,
     serviceTime: { kind: "uniform", a: 4, b: 10 },
     deviceValue: { kind: "normal", mu: 120, sigma: 35 },
     operationCostPerDevice: 20,
-    totalDailyDemand: { kind: "normal", mu: 110, sigma: 15 },
     serviceDistanceKm: 10,
   },
 };
 
 assert.equal(validateScenario(base).length, 0);
-assert.ok(validateScenario({ ...base, global: { ...base.global, capacityMaxDevices: 0 } }).length > 0);
+assert.ok(validateScenario({ ...base, global: { ...base.global, horizonDays: 0 } }).length > 0);
 
 const result = runSimulation(base);
 assert.ok(result.summary.totalRevenue.mean > 0);

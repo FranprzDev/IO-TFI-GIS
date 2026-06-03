@@ -22,7 +22,6 @@ export interface Kiosk {
   lat: number;
   lon: number;
   chain: string;
-  acquisitionPrice: number;
   source: KioskSource;
   active?: boolean;
   locked?: boolean;
@@ -30,14 +29,12 @@ export interface Kiosk {
 }
 
 export interface GlobalParams {
-  capacityMaxDevices: number;
   horizonDays: number;
   confidenceLevel: number;
   warmupDays: number;
   serviceTime: UniformDistributionParams;
   deviceValue: NormalDistributionParams;
   operationCostPerDevice: number;
-  totalDailyDemand: NormalDistributionParams;
   serviceDistanceKm: number;
 }
 
@@ -53,7 +50,6 @@ export interface DemandZone {
 }
 
 export interface ScoreWeights {
-  margin: number;
   capturedDemand: number;
   coverage: number;
   balance: number;
@@ -75,9 +71,7 @@ export interface KioskRunMetrics {
   revenue: number;
   cost: number;
   margin: number;
-  utilization: number;
   avgServiceMinutes: number;
-  collectionsTriggered: number;
 }
 
 export interface SimulationRunResult {
@@ -112,6 +106,7 @@ export interface GeoPoint {
 export interface VoronoiCell {
   kioskId: string;
   points: GeoPoint[];
+  parts?: GeoPoint[][];
 }
 
 export interface SpatialMetrics {
@@ -171,7 +166,6 @@ export interface OptimizationRequest {
   operationCostPerDevice: number;
   minSites: number;
   maxSites: number;
-  budgetCap: number | null;
   scoreWeights: ScoreWeights;
 }
 
@@ -179,13 +173,12 @@ export interface OptimizationScenarioSummary {
   selectedKioskIds: string[];
   score: number;
   components: {
-    margin: number;
     capturedDemand: number;
     coverage: number;
     balance: number;
     cannibalization: number;
   };
-  simulation: SimulationResult;
+  spatial: SpatialMetrics;
   candidateEvaluations: CandidateEvaluation[];
 }
 
