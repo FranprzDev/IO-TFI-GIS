@@ -52,7 +52,7 @@ interface BootstrapData {
 type SidebarTab = "simulation" | "optimization" | "settings";
 
 const baseDraft: Draft = {
-  horizonDays: 180,
+  horizonDays: 365,
   serviceMinA: 4,
   serviceMinB: 10,
   serviceDistanceKm: 10,
@@ -461,7 +461,7 @@ export default function Home() {
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Costos por kiosko (fijos, en ARS)</div>
                     <div className="mt-1 font-semibold">Adquisición: $28.000.000 <span className="font-normal text-[var(--text-secondary)]">(≈ USD 20.000)</span></div>
-                    <div className="font-semibold">Mantenimiento: $600.000 / 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 400)</span></div>
+                    <div className="font-semibold">Mantenimiento: $7.000.000 / 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 5.000)</span></div>
                   </div>
                 </section>
 
@@ -477,14 +477,14 @@ export default function Home() {
                   </DistributionField>
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Llegada de usuarios (Poisson)</div>
-                    <div className="mt-1 font-semibold">λ = 5 usuarios/hora por kiosko</div>
+                    <div className="mt-1 font-semibold">λ = 2 usuarios/hora por kiosko</div>
                     <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Valor fijo.</div>
                   </div>
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Modelo de ingresos (fijo, en ARS)</div>
-                    <div className="mt-1">Aceptación de oferta: <span className="font-semibold">70%</span> (Binomial)</div>
-                    <div className="mt-1">Reacondicionable <span className="font-semibold">75%</span>: N($250.000, $100.000), ganancia <span className="font-semibold">30%</span></div>
-                    <div className="mt-1">Chatarra <span className="font-semibold">25%</span>: N($15.000, $10.000), ganancia <span className="font-semibold">10%</span></div>
+                    <div className="mt-1">Aceptación de oferta: <span className="font-semibold">60%</span> (Binomial)</div>
+                    <div className="mt-1">Reacondicionable <span className="font-semibold">60%</span>: N($120.000, $40.000), ganancia <span className="font-semibold">10%</span></div>
+                    <div className="mt-1">Chatarra <span className="font-semibold">40%</span>: N($10.000, $3.000), ganancia <span className="font-semibold">30%</span></div>
                   </div>
                 </section>
 
@@ -763,4 +763,3 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
     </div>
   ), document.body);
 }
-

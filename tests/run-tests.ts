@@ -35,7 +35,7 @@ function approx(value: number, low: number, high: number) {
 (function testBinomial() {
   const rng = new Random(new MCM(77));
   const n = 20;
-  const p = 0.7;
+  const p = 0.6;
   const vals = Array.from({ length: 20000 }, () => rng.binomial(n, p));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, n * p - 0.3, n * p + 0.3); // mean of Binomial(n,p) = n*p
@@ -67,12 +67,12 @@ const result = runSimulation(base);
 assert.ok(result.summary.totalRevenue.mean > 0);
 assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci95Lower);
 
-// Revenue model: Binomial acceptance (~70%) and refurbish/scrap split (~75/25).
+// Revenue model: Binomial acceptance (~60%) and refurbish/scrap split (~60/40).
 (function testRevenueModel() {
   const k = result.kiosks[0];
-  approx(k.accepted / k.arrivals, 0.66, 0.74); // p = 0.70
+  approx(k.accepted / k.arrivals, 0.56, 0.64); // p = 0.60
   assert.equal(k.refurbished + k.scrap, k.devicesCollected); // only accepted are collected
-  approx(k.refurbished / k.devicesCollected, 0.71, 0.79); // 75% refurbishable
+  approx(k.refurbished / k.devicesCollected, 0.56, 0.64); // 60% refurbishable
   assert.equal(result.summary.totalDevices.mean, result.summary.totalRefurbished.mean + result.summary.totalScrap.mean);
   assert.ok(result.summary.recommendation === "S1" || result.summary.recommendation === "S2");
 })();
