@@ -205,13 +205,10 @@ export default function Home() {
     return {
       scenario: "A",
       seed: Date.now(),
-      conglomerates: [],
       kiosks: scenarioKiosks,
       demandZones,
       global: {
         horizonDays: draft.horizonDays,
-        confidenceLevel: 0.95,
-        warmupDays: 0,
         serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
         serviceDistanceKm: draft.serviceDistanceKm,
       },

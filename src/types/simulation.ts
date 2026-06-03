@@ -2,18 +2,6 @@ export type ScenarioKey = "A" | "B";
 export type KioskSource = "csv" | "manual";
 
 export interface UniformDistributionParams { kind: "uniform"; a: number; b: number }
-export interface NormalDistributionParams { kind: "normal"; mu: number; sigma: number }
-export interface PoissonDistributionParams { kind: "poisson"; lambda: number }
-export type DistributionParams = UniformDistributionParams | NormalDistributionParams | PoissonDistributionParams;
-
-export interface Conglomerate {
-  id: string;
-  nombre: string;
-  departamento: string;
-  dailyDemand: NormalDistributionParams;
-  interestPct: number;
-  operationalHours: number;
-}
 
 export interface Kiosk {
   id: string;
@@ -30,8 +18,6 @@ export interface Kiosk {
 
 export interface GlobalParams {
   horizonDays: number;
-  confidenceLevel: number;
-  warmupDays: number;
   serviceTime: UniformDistributionParams;
   serviceDistanceKm: number;
 }
@@ -57,7 +43,6 @@ export interface ScoreWeights {
 export interface ScenarioInput {
   scenario: ScenarioKey;
   seed: number;
-  conglomerates: Conglomerate[];
   kiosks: Kiosk[];
   demandZones: DemandZone[];
   global: GlobalParams;
@@ -117,7 +102,6 @@ export interface SpatialMetrics {
   capturedDemand: number;
   loadBalanceScore: number;
   cannibalizationPct: number;
-  incrementalDemandPct: number;
   assignments: SpatialAssignment[];
   voronoiCells: VoronoiCell[];
   demandByKiosk?: Record<string, { kioskId: string; assignedDemand: number; effectiveDemand: number; assignmentCount: number }>;
@@ -151,15 +135,6 @@ export interface HistoryEntry {
   summary: SimulationResult["summary"];
 }
 
-export interface CandidateEvaluation {
-  kioskId: string;
-  nombre: string;
-  source: KioskSource;
-  chain: string;
-  scoreContribution: number;
-  assignedDemand: number;
-}
-
 export interface OptimizationRequest {
   seed: number;
   kiosks: Kiosk[];
@@ -181,7 +156,6 @@ export interface OptimizationScenarioSummary {
     cannibalization: number;
   };
   spatial: SpatialMetrics;
-  candidateEvaluations: CandidateEvaluation[];
 }
 
 export interface OptimizationResult {
