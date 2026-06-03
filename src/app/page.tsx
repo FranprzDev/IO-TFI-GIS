@@ -160,7 +160,12 @@ export default function Home() {
   const activeOptimizationScenario = useMemo(() => {
     if (!optimization) return null;
     if (selectedOptimizationIds.length > 0) {
-      return optimization.topScenarios.find((item) => item.selectedKioskIds.join(",") === selectedOptimizationIds.join(",")) ?? optimization.best;
+      // Match by set (order-insensitive) so a selection restored/persisted in a
+      // different order still resolves to its scenario instead of silently
+      // falling back to `best` (which would show a different kiosk count).
+      const key = (ids: string[]) => [...ids].sort().join(",");
+      const selectedKey = key(selectedOptimizationIds);
+      return optimization.topScenarios.find((item) => key(item.selectedKioskIds) === selectedKey) ?? optimization.best;
     }
     return optimization.best;
   }, [optimization, selectedOptimizationIds]);
@@ -673,7 +678,7 @@ export default function Home() {
               kiosks={kiosks}
               demandZones={demandZones}
               voronoiCells={mapVoronoiCells}
-              highlightedKioskIds={activeOptimizationScenario?.selectedKioskIds ?? []}
+              highlightedKioskIds={selectedOptimizationIds.length > 0 ? selectedOptimizationIds : (activeOptimizationScenario?.selectedKioskIds ?? [])}
               focusHighlightedOnly={sidebarTab === "optimization" || selectedOptimizationIds.length > 0}
               highlightColor="#22C55E"
               onMapClick={onMapClick}
