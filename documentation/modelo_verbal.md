@@ -8,7 +8,7 @@ Una vez que el usuario inicia la interacción con el kiosco, el dispositivo es s
 
 De la totalidad de dispositivos ingresados al sistema, aproximadamente el 60% corresponde a equipos con posibilidad de reacondicionamiento y el 40% restante constituye chatarra electrónica.
 
-El valor económico ofrecido por cada equipo reacondicionado presenta una distribución Normal con media μ = $120,000 ARS y desvío estándar σ = $40,000 ARS, reflejando la concentración de valores alrededor del precio promedio de mercado para equipos usados en la región; la ganancia para este tipo de equipos es de un 10%.
+El valor económico ofrecido por cada equipo reacondicionado presenta una distribución Normal con media μ = $120,000 ARS y desvío estándar σ = $40,000 ARS, reflejando la concentración de valores alrededor del precio promedio de mercado para equipos usados en la región; la ganancia para este tipo de equipos es de un 15%.
 
 El valor económico ofrecido por cada equipo destinado a chatarra presenta una distribución Normal con media μ = $10,000 ARS y desvío estándar σ = $3,000 ARS, correspondiente al valor de los metales preciosos recuperables; la ganancia es de un 30% por cada equipo.
 
@@ -26,7 +26,7 @@ Si la ganancia de la empresa es mayor al costo de la inversión en todos los kio
 
 Caso contrario, S2, no se recomienda invertir en este mercado.
 
-En promedio, el gasto incurrido por agregar un kiosco en una ubicación es de $20,000 dólares ($28,000,000 ARS) y el costo de mantener un kiosco activo es de $5,000 dólares (dentro de estos costos se incluyen sueldos de los operadores, mantenimiento, pago de impuestos y tasas municipales, recolección periódica, precio del alquiler, marketing y growth).
+En promedio, el gasto incurrido por agregar un kiosco en una ubicación es de $20,000 dólares ($28,000,000 ARS) y el costo de mantener un kiosco activo es de $3,000 dólares cada 30 días (dentro de estos costos se incluyen sueldos de los operadores, mantenimiento, pago de impuestos y tasas municipales, recolección periódica, precio del alquiler, marketing y growth).
 
 Se solicita simular la operación de la red durante un período de 365 días e informar para cada kiosco evaluado:
 

@@ -23,13 +23,13 @@ configuración dada, en un horizonte dado.
 | Horario operativo | 9:00–22:00 (13 h/día); luego pasa el día | 13 h/día, λ plano por hora | ✅ |
 | Tiempo de servicio | Uniforme U[4, 10] minutos | U[4,10] | ✅ |
 | Costo de adquisición | USD 20.000 ≈ ARS 28.000.000, fijo, una vez | ARS 28.000.000 constante | ✅ |
-| Costo de mantenimiento | USD 5.000 ≈ ARS 7.000.000 por 30 días | ARS 7.000.000 / 30 días, recurrente | ✅ |
+| Costo de mantenimiento | USD 3.000 ≈ ARS 4.200.000 por 30 días | ARS 4.200.000 / 30 días, recurrente | ✅ |
 | Horizonte | 365 días (configurable) | `horizonDays` editable | ✅ |
 | Tipo de dispositivo | 60% reacondicionable / 40% chatarra | Bernoulli 60/40 por dispositivo | ✅ |
-| Valor reacondicionado | Normal μ=$120.000, σ=$40.000; ganancia 10% | N(120k,40k), ganancia 10% | ✅ |
+| Valor reacondicionado | Normal μ=$120.000, σ=$40.000; ganancia 15% | N(120k,40k), ganancia 15% | ✅ |
 | Valor chatarra | Normal μ=$10.000, σ=$3.000; ganancia 30% | N(10k,3k), ganancia 30% | ✅ |
 | Aceptación de oferta | Binomial p = 0,60 | Binomial(arribos, 0,60) por hora | ✅ |
-| Ingreso por equipo | valor × % de ganancia (10% / 30%) | valor × ganancia% | ✅ |
+| Ingreso por equipo | valor × % de ganancia (15% / 30%) | valor × ganancia% | ✅ |
 | Salidas detalladas | por kiosko + totales de red | por kiosko + red (ResultModal) | ✅ |
 
 **Estado: el simulador coincide totalmente con el modelo verbal.** Tanto la operación
@@ -61,7 +61,7 @@ Por cada **usuario que arriba** (Poisson) y **completa la tasación** (servicio 
    - Chatarra: μ = $10.000 ARS, σ = $3.000 ARS.
 
 4. **Ganancia (ingreso neto por equipo) = valor × % de ganancia:**
-   - Reacondicionable: **10%**.
+   - Reacondicionable: **15%**.
    - Chatarra: **30%**.
 
 5. **Margen de la red** = Σ ganancias de equipos recolectados − costos fijos
@@ -80,7 +80,7 @@ Por cada **usuario que arriba** (Poisson) y **completa la tasación** (servicio 
 - **RF-27:** Muestrear el valor económico por tipo: Normal(120.000, 40.000) para
   reacondicionado y Normal(10.000, 3.000) para chatarra, truncadas a ≥ 0.
 - **RF-28:** Calcular el ingreso (ganancia) por equipo como `valor × % ganancia`
-  (10% reacondicionado, 30% chatarra).
+  (15% reacondicionado, 30% chatarra).
 - **RF-29:** Reportar, **por kiosko**: usuarios que arribaron, tiempo promedio de
   servicio, usuarios que aceptaron la oferta, y ganancia económica total recolectada.
 - **RF-30:** Reportar, **a nivel de red** al finalizar el horizonte: total de
@@ -100,10 +100,10 @@ Por cada **usuario que arriba** (Poisson) y **completa la tasación** (servicio 
 | Split reacondicionable | 0,60 | `REFURBISH_RATE` |
 | Valor reacondicionado | N(120.000, 40.000) ARS | `REFURBISHED_VALUE_MU` / `_SIGMA` |
 | Valor chatarra | N(10.000, 3.000) ARS | `SCRAP_VALUE_MU` / `_SIGMA` |
-| Ganancia reacondicionado | 10% | `REFURBISHED_PROFIT` |
+| Ganancia reacondicionado | 15% | `REFURBISHED_PROFIT` |
 | Ganancia chatarra | 30% | `SCRAP_PROFIT` |
 | Adquisición | $28.000.000 ARS (una vez) | `KIOSK_ACQUISITION_COST_ARS` |
-| Mantenimiento | $7.000.000 ARS / 30 días | `KIOSK_MAINTENANCE_COST_ARS_PER_30D` |
+| Mantenimiento | $4.200.000 ARS / 30 días | `KIOSK_MAINTENANCE_COST_ARS_PER_30D` |
 
 ## 6. Salidas requeridas (reporte)
 
@@ -124,7 +124,7 @@ Por cada **usuario que arriba** (Poisson) y **completa la tasación** (servicio 
 - [x] RF-25: aceptación Binomial p=0,60 en el motor (`lib/sim/engine.ts`).
 - [x] RF-26: clasificación reacondicionable/chatarra (60/40).
 - [x] RF-27: distribuciones de valor por tipo (Normal truncada).
-- [x] RF-28: ingreso = valor × % ganancia (10% / 30%).
+- [x] RF-28: ingreso = valor × % ganancia (15% / 30%).
 - [x] RF-29: métricas por kiosko (arribos, servicio prom., aceptados, ganancia).
 - [x] RF-30: totales de red (dispositivos, reacond./chatarra, ingreso, recomendación).
 - [x] RF-31: dictamen S1/S2 contra costo de inversión total.
