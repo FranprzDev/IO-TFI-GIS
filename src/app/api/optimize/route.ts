@@ -1,4 +1,4 @@
-import { runOptimization } from "@/lib/optimize/engine";
+import { runOptimization, MAX_OPTIMIZER_SITES } from "@/lib/optimize/engine";
 import type { OptimizationRequest } from "@/types/simulation";
 
 export const dynamic = "force-dynamic";
@@ -6,10 +6,11 @@ export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const body = (await req.json()) as OptimizationRequest;
+  const maxSites = Math.min(body.kiosks.length, MAX_OPTIMIZER_SITES);
   const normalizedBody: OptimizationRequest = {
     ...body,
-    minSites: Math.min(body.minSites, body.kiosks.length),
-    maxSites: body.kiosks.length,
+    minSites: Math.min(body.minSites, maxSites),
+    maxSites,
   };
 
   const siteSpan = Math.max(1, normalizedBody.maxSites - normalizedBody.minSites + 1);
