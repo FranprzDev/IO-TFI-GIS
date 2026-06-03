@@ -1,5 +1,5 @@
 import { MCM } from "./mcm";
-import { createNormalSampler, sampleBinomial, samplePoisson, sampleUniform } from "./distributions";
+import { Random } from "./distributions";
 import { buildSpatialSnapshot, type SpatialSnapshot } from "@/lib/spatial/voronoi";
 import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationRunResult, SimulationResult } from "../../types/simulation";
 
@@ -42,8 +42,7 @@ function* simulateRun(
   activeKiosks: Kiosk[],
 ): Generator<{ day: number; totalDays: number }, SimulationRunResult, void> {
   const seed = input.seed;
-  const mcm = new MCM(seed);
-  const sampleNormal = createNormalSampler();
+  const rng = new Random(new MCM(seed));
 
   const acc = new Map<string, { arrivals: number; accepted: number; refurbished: number; scrap: number; revenue: number; service: number; }>();
   for (const kiosk of activeKiosks) {
@@ -55,27 +54,27 @@ function* simulateRun(
       const a = acc.get(kiosk.id)!;
 
       for (let hour = 0; hour < OPERATING_HOURS_PER_DAY; hour++) {
-        const arrivals = samplePoisson(mcm, ARRIVALS_LAMBDA_PER_HOUR);
+        const arrivals = rng.poisson(ARRIVALS_LAMBDA_PER_HOUR);
         a.arrivals += arrivals;
 
         for (let j = 0; j < arrivals; j++) {
-          a.service += sampleUniform(mcm, input.global.serviceTime.a, input.global.serviceTime.b);
+          a.service += rng.uniform(input.global.serviceTime.a, input.global.serviceTime.b);
         }
 
-        const accepted = sampleBinomial(mcm, arrivals, OFFER_ACCEPTANCE_P);
+        const accepted = rng.binomial(arrivals, OFFER_ACCEPTANCE_P);
         a.accepted += accepted;
 
-        const refurbished = sampleBinomial(mcm, accepted, REFURBISH_RATE);
+        const refurbished = rng.binomial(accepted, REFURBISH_RATE);
         const scrap = accepted - refurbished;
         a.refurbished += refurbished;
         a.scrap += scrap;
 
         for (let j = 0; j < refurbished; j++) {
-          const value = Math.max(0, sampleNormal(mcm, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
+          const value = Math.max(0, rng.normal(REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
           a.revenue += value * REFURBISHED_PROFIT;
         }
         for (let j = 0; j < scrap; j++) {
-          const value = Math.max(0, sampleNormal(mcm, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
+          const value = Math.max(0, rng.normal(SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
           a.revenue += value * SCRAP_PROFIT;
         }
       }

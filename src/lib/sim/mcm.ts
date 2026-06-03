@@ -1,5 +1,9 @@
 
 export class MCM {
+  /* 
+    Esto lo sacamos de https://en.wikipedia.org/wiki/Linear_congruential_generator
+    En la parte de donde está la tablita.
+  */
   private static readonly A = 1664525;
   private static readonly C = 1013904223;
   private static readonly M = 4294967296;

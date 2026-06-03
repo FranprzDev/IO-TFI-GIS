@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MCM } from "../src/lib/sim/mcm";
-import { sampleBinomial, sampleNormal, samplePoisson, sampleUniform } from "../src/lib/sim/distributions";
+import { Random } from "../src/lib/sim/distributions";
 import { validateScenario } from "../src/lib/validation/scenario";
 import { runSimulation } from "../src/lib/sim/engine";
 import { loadDatasets } from "../src/lib/data/csv";
@@ -11,32 +11,32 @@ function approx(value: number, low: number, high: number) {
 }
 
 (function testUniform() {
-  const mcm = new MCM(1234);
+  const rng = new Random(new MCM(1234));
   for (let i = 0; i < 1000; i++) {
-    const v = sampleUniform(mcm, 4, 10);
+    const v = rng.uniform(4, 10);
     assert.ok(v >= 4 && v < 10);
   }
 })();
 
 (function testNormal() {
-  const mcm = new MCM(999);
-  const vals = Array.from({ length: 12000 }, () => sampleNormal(mcm, 100, 20));
+  const rng = new Random(new MCM(999));
+  const vals = Array.from({ length: 12000 }, () => rng.normal(100, 20));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, 98, 102);
 })();
 
 (function testPoisson() {
-  const mcm = new MCM(55);
-  const vals = Array.from({ length: 20000 }, () => samplePoisson(mcm, 6));
+  const rng = new Random(new MCM(55));
+  const vals = Array.from({ length: 20000 }, () => rng.poisson(6));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, 5.7, 6.3);
 })();
 
 (function testBinomial() {
-  const mcm = new MCM(77);
+  const rng = new Random(new MCM(77));
   const n = 20;
   const p = 0.7;
-  const vals = Array.from({ length: 20000 }, () => sampleBinomial(mcm, n, p));
+  const vals = Array.from({ length: 20000 }, () => rng.binomial(n, p));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, n * p - 0.3, n * p + 0.3); // mean of Binomial(n,p) = n*p
   assert.ok(vals.every((v) => Number.isInteger(v) && v >= 0 && v <= n));
@@ -89,6 +89,19 @@ assert.ok(invalidRes.some((e) => e.field === "global.serviceTime"));
   assert.equal(a.summary.totalMargin.mean, b.summary.totalMargin.mean);
   assert.equal(a.summary.totalRevenue.mean, b.summary.totalRevenue.mean);
   assert.equal(a.summary.totalDevices.mean, b.summary.totalDevices.mean);
+})();
+
+(function testIndependentRandomInstances() {
+  const first = new Random(new MCM(2024));
+  const second = new Random(new MCM(2024));
+
+  const a1 = first.normal(10, 2);
+  const a2 = first.normal(10, 2);
+  const b1 = second.normal(10, 2);
+  const b2 = second.normal(10, 2);
+
+  assert.equal(a1, b1);
+  assert.equal(a2, b2);
 })();
 
 async function main() {

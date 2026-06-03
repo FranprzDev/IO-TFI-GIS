@@ -201,10 +201,10 @@ export default function Home() {
       minSites: draft.minSites,
       maxSites: optimizableKioskCount,
       scoreWeights: {
-        capturedDemand: 0.35,
-        coverage: 0.3,
-        balance: 0.2,
-        cannibalization: 0.15,
+        capturedDemand: 0.2,
+        coverage: 0.2,
+        balance: 0.35,
+        cannibalization: 0.25,
       },
     };
   }
