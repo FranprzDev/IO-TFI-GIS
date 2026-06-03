@@ -18,6 +18,7 @@ configuración dada, en un horizonte dado.
 
 | Aspecto | Modelo verbal (spec) | Implementado | Estado |
 |---|---|---|---|
+| Optimización de puntos | Paso previo ideal por densidad poblacional; **no modifica** la tasa de llegada | Optimizador (Voronoi/cobertura) separado; no toca λ | ✅ |
 | Llegadas | Poisson, λ = 5 usuarios/hora por kiosko | Poisson λ=5/h, por kiosko | ✅ |
 | Horario operativo | 9:00–22:00 (13 h/día); luego pasa el día | 13 h/día, λ plano por hora | ✅ |
 | Tiempo de servicio | Uniforme U[4, 10] minutos | U[4,10] | ✅ |
@@ -31,9 +32,16 @@ configuración dada, en un horizonte dado.
 | **Ingreso por equipo** | valor × % de ganancia (30% / 10%) | valor pleno | ❌ |
 | **Salidas detalladas** | por kiosko + totales de red | parciales | ❌ |
 
-Lo que ya está alineado: **llegadas, horario, tiempo de servicio, costos y horizonte**.
+Lo que ya está alineado: **optimización de puntos, llegadas, horario, tiempo de servicio,
+costos y horizonte**.
 Lo que falta cerrar: el **modelo de ingresos** (split reacondicionable/chatarra, % de
 ganancia, aceptación binomial) y el **reporte de salidas** requerido.
+
+> Aclaración del modelo verbal: la optimización de ubicaciones por densidad poblacional
+> es un paso previo *ideal* para elegir dónde instalar kioscos, pero **no modifica la tasa
+> de llegada** (λ = 5 usuarios/hora se mantiene fija e independiente de la ubicación). El
+> simulador respeta esta separación: el optimizador decide *dónde*, la simulación evalúa
+> *si es rentable* con λ constante.
 
 ## 3. Modelo de ingresos a implementar
 
