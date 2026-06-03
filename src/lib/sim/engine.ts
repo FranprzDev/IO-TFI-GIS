@@ -110,20 +110,12 @@ function* simulateRun(
 
   const totalInvestment = totalCost;
   const feasible = totalRevenue > totalInvestment;
-  const amortizationDays = totalMargin > 0
-    ? Math.max(1, Math.round((activeKiosks.length * KIOSK_ACQUISITION_COST_ARS / totalMargin) * input.global.horizonDays))
-    : Number.POSITIVE_INFINITY;
 
-  return { seed, kiosks, totalDevices, totalRefurbished, totalScrap, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
+  return { seed, kiosks, totalDevices, totalRefurbished, totalScrap, totalRevenue, totalCost, totalMargin, feasible };
 }
 
-function overConfigWarnings(): string[] {
-  return [];
-}
-
-function buildSummary(run: SimulationRunResult, horizonDays: number): SimulationResult["summary"] {
+function buildSummary(run: SimulationRunResult): SimulationResult["summary"] {
   const point = (value: number) => ({ mean: value, ci95Lower: value, ci95Upper: value });
-  const amortization = Number.isFinite(run.amortizationDays) ? run.amortizationDays : horizonDays * 10;
   return {
     totalMargin: point(run.totalMargin),
     totalRevenue: point(run.totalRevenue),
@@ -131,7 +123,6 @@ function buildSummary(run: SimulationRunResult, horizonDays: number): Simulation
     totalDevices: point(run.totalDevices),
     totalRefurbished: point(run.totalRefurbished),
     totalScrap: point(run.totalScrap),
-    amortizationDays: point(amortization),
     feasibleProbability: run.feasible ? 1 : 0,
     recommendation: run.feasible ? "S1" : "S2",
   };
@@ -143,9 +134,8 @@ function buildResult(input: ScenarioInput, run: SimulationRunResult, spatial: Sp
     runId: `${input.scenario}-${Date.now()}`,
     timestamp: new Date().toISOString(),
     input,
-    summary: buildSummary(run, input.global.horizonDays),
+    summary: buildSummary(run),
     kiosks: run.kiosks,
-    warnings: overConfigWarnings(),
     spatial,
   };
 }

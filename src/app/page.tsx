@@ -13,6 +13,7 @@ import {
   OPTIMIZATION_KEY,
   OPTIMIZATION_SELECTION_KEY,
   SCENARIO_KEY,
+  readHistory,
   readOptimizationResult,
   readOptimizationSelection,
   readScenarioDraft,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/storage/history";
 import type {
   DemandZone,
+  HistoryEntry,
   Kiosk,
   OptimizationRequest,
   OptimizationResult,
@@ -49,7 +51,7 @@ interface BootstrapData {
   localityPoints: Array<{ id: string; nombre: string; departamento: string; latitud: number; longitud: number; poblacion2022: number; densidad: number; source: string }>;
 }
 
-type SidebarTab = "simulation" | "optimization" | "settings";
+type SidebarTab = "simulation" | "optimization" | "settings" | "history";
 
 const baseDraft: Draft = {
   horizonDays: 365,
@@ -70,6 +72,9 @@ export default function Home() {
   const [demandZones, setDemandZones] = useState<DemandZone[]>([]);
   const [draft, setDraft] = useState<Draft>(baseDraft);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("simulation");
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [historyCompareIds, setHistoryCompareIds] = useState<string[]>([]);
+  const [showHistoryCompareModal, setShowHistoryCompareModal] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -78,7 +83,7 @@ export default function Home() {
   const [progressDay, setProgressDay] = useState(0);
   const [optimizationPct, setOptimizationPct] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
-  const [modal, setModal] = useState<{ open: boolean; action: "run" | "optimize" | "clear" | null }>({ open: false, action: null });
+  const [modal, setModal] = useState<{ open: boolean; action: "run" | "optimize" | "clear" | "clearHistory" | null }>({ open: false, action: null });
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
   const { placeKiosk } = useTucumanKioskPlacement(setKiosks);
 
@@ -87,12 +92,39 @@ export default function Home() {
     const stored = readScenarioDraft<Draft>();
     /* eslint-disable react-hooks/set-state-in-effect */
     if (stored) setDraft((prev) => ({ ...prev, ...stored }));
+    setHistoryEntries(readHistory());
     const savedOptimization = readOptimizationResult();
     if (savedOptimization) setOptimization(savedOptimization);
     const savedSelection = readOptimizationSelection();
     if (savedSelection.length > 0) setSelectedOptimizationIds(savedSelection);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
+
+  const persistSimulationResult = (simResult: SimulationResult) => {
+    const alreadySaved = readHistory().some((entry) => entry.runId === simResult.runId);
+    if (!alreadySaved) {
+      saveHistoryEntry(simResult);
+    }
+    saveLastResult(simResult);
+    setHistoryEntries(readHistory());
+  };
+
+  const fmtMoney = (value: number) => new Intl.NumberFormat("es-AR").format(Math.round(value));
+
+  const toggleHistoryCompare = (runId: string) => {
+    setHistoryCompareIds((current) => {
+      if (current.includes(runId)) return current.filter((id) => id !== runId);
+      if (current.length >= 2) return [current[1], runId];
+      return [...current, runId];
+    });
+  };
+
+  const clearHistoryCompare = () => setHistoryCompareIds([]);
+  const openHistoryCompareModal = () => {
+    if (historyCompareIds.length === 2) {
+      setShowHistoryCompareModal(true);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/bootstrap")
@@ -258,8 +290,7 @@ export default function Home() {
             setProgressDay(data.day as number);
           } else if (event === "result" && data.ok) {
             const simResult = data.result as SimulationResult;
-            saveHistoryEntry(simResult);
-            saveLastResult(simResult);
+            persistSimulationResult(simResult);
             setResult(simResult);
             setProgressDay(input.global.horizonDays);
             setShowResultModal(true);
@@ -348,7 +379,16 @@ export default function Home() {
       setResult(null);
       setOptimization(null);
       setSelectedOptimizationIds([]);
+      setHistoryEntries([]);
+      setHistoryCompareIds([]);
+      setShowHistoryCompareModal(false);
       setDraft(baseDraft);
+    }
+    if (action === "clearHistory") {
+      window.localStorage.removeItem(HISTORY_KEY);
+      setHistoryEntries([]);
+      setHistoryCompareIds([]);
+      setShowHistoryCompareModal(false);
     }
   }
 
@@ -358,6 +398,8 @@ export default function Home() {
     ? "¿Estás seguro de optimizar la red?"
     : modal.action === "run"
       ? "¿Estás seguro de ejecutar la simulación?"
+      : modal.action === "clearHistory"
+        ? "¿Estás seguro de limpiar el historial?"
       : "¿Estás seguro?";
   const activeProgress = isOptimizing
     ? {
@@ -375,13 +417,18 @@ export default function Home() {
               <ProgressBar pct={progressPct} />
             </>
           ),
-        }
+      }
       : null;
-
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <ConfirmModal open={modal.open} title={modalTitle} onCancel={() => setModal({ open: false, action: null })} onConfirm={confirm} />
       <ResultModal open={showResultModal} result={result} onClose={() => setShowResultModal(false)} />
+      <HistoryCompareModal
+        open={showHistoryCompareModal}
+        left={historyEntries.find((entry) => entry.runId === historyCompareIds[0]) ?? null}
+        right={historyEntries.find((entry) => entry.runId === historyCompareIds[1]) ?? null}
+        onClose={() => setShowHistoryCompareModal(false)}
+      />
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[400px_1fr]">
         <aside className="flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
           <h1 className="text-xl font-bold">Simulador ecoATM</h1>
@@ -424,7 +471,7 @@ export default function Home() {
                   Ejecutar simulacion
                 </button>
                 <button type="button" onClick={() => setModal({ open: true, action: "clear" })} className="w-full rounded border border-[var(--border)] px-3 py-2">
-                  Limpiar historial
+                  Reiniciar datos
                 </button>
               </div>
             )}
@@ -459,43 +506,126 @@ export default function Home() {
                   <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Costos por kiosko (fijos, en ARS)</div>
-                    <div className="mt-1 font-semibold">Adquisición: $28.000.000 <span className="font-normal text-[var(--text-secondary)]">(≈ USD 20.000)</span></div>
-                    <div className="font-semibold">Mantenimiento: $7.000.000 / 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 5.000)</span></div>
+                    <div className="mt-1 font-semibold">Adquisición: $28.000.000 por kiosko <span className="font-normal text-[var(--text-secondary)]">(≈ USD 20.000)</span></div>
+                    <div className="font-semibold">Mantenimiento: $4.200.000 cada 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 3.000)</span></div>
                   </div>
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
-                  <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Distribuciones</h2>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Distribuciones</h2>
+                    <span className="text-xs text-[var(--text-secondary)]">Solo lectura</span>
+                  </div>
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                    Estas distribuciones forman parte del motor de simulación y no se pueden cambiar desde la interfaz.
+                  </div>
                   <DistributionField
                     title="Tiempo de servicio"
                     distribution="Uniforme"
-                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+                    tooltip="Distribucion uniforme fija usada por el motor."
                   >
                     <NumberField label="Tiempo servicio min A" value={draft.serviceMinA} min={0} max={120} onChange={(value) => setDraft({ ...draft, serviceMinA: value })} disabled />
                     <NumberField label="Tiempo servicio min B" value={draft.serviceMinB} min={draft.serviceMinA + 1} max={240} onChange={(value) => setDraft({ ...draft, serviceMinB: value })} disabled />
                   </DistributionField>
-                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
-                    <div className="text-[var(--text-secondary)]">Llegada de usuarios (Poisson)</div>
-                    <div className="mt-1 font-semibold">λ = 2 usuarios/hora por kiosko</div>
-                    <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Valor fijo.</div>
-                  </div>
-                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
-                    <div className="text-[var(--text-secondary)]">Modelo de ingresos (fijo, en ARS)</div>
-                    <div className="mt-1">Aceptación de oferta: <span className="font-semibold">60%</span> (Binomial)</div>
-                    <div className="mt-1">Reacondicionable <span className="font-semibold">60%</span>: N($120.000, $40.000), ganancia <span className="font-semibold">10%</span></div>
-                    <div className="mt-1">Chatarra <span className="font-semibold">40%</span>: N($10.000, $3.000), ganancia <span className="font-semibold">30%</span></div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                      <div className="text-[var(--text-secondary)]">Llegada de usuarios</div>
+                      <div className="mt-1 font-semibold">Poisson, λ = 2 usuarios/hora por kiosko</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Parámetro fijo.</div>
+                    </div>
+                    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                      <div className="text-[var(--text-secondary)]">Aceptación de oferta</div>
+                      <div className="mt-1 font-semibold">Binomial, p = 60%</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">Sobre los arribos de cada kiosko. Parámetro fijo.</div>
+                    </div>
+                    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                      <div className="text-[var(--text-secondary)]">Reacondicionados</div>
+                      <div className="mt-1 font-semibold">60% de los aceptados, Normal N($120.000, $40.000)</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">Ganancia asociada: 15% sobre el valor del equipo.</div>
+                    </div>
+                    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                      <div className="text-[var(--text-secondary)]">Chatarra</div>
+                      <div className="mt-1 font-semibold">40% de los aceptados, Normal N($10.000, $3.000)</div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">Ganancia asociada: 30% sobre el valor del equipo.</div>
+                    </div>
                   </div>
                 </section>
 
-                <section className="space-y-3 rounded border border-[var(--border)] p-3">
-                  <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Restricciones</h2>
-                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
-                    <div className="text-[var(--text-secondary)]">Max kioskos efectivos</div>
-                    <div className="mt-1 font-semibold">{optimizableKioskCount}</div>
-                  </div>
-                </section>
               </div>
             )}
+
+            {sidebarTab === "history" && (
+              <div className="space-y-3">
+                {historyEntries.length === 0 ? (
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-sm text-[var(--text-secondary)]">
+                    No hay resultados guardados todavia.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="sticky top-0 z-20 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-sm shadow-md shadow-black/10">
+                      <div className="font-medium">Opciones</div>
+                      <section className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setModal({ open: true, action: "clearHistory" })}
+                          className="rounded border border-[var(--border)] px-3 py-1 text-xs"
+                          disabled={historyEntries.length === 0}
+                        >
+                          Limpiar historial
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openHistoryCompareModal}
+                          className="rounded border border-[var(--border)] px-3 py-1 text-xs"
+                          disabled={historyCompareIds.length !== 2}
+                        >
+                          Comparar selecciones
+                        </button>
+                      </section>
+                    </div>
+
+                    <div className="space-y-2">
+                      {historyEntries.map((entry) => {
+                        const selected = historyCompareIds.includes(entry.runId);
+                        return (
+                          <div
+                            key={entry.runId}
+                            className={`rounded border p-3 text-sm ${
+                              selected ? "border-[var(--accent)] bg-[var(--btn-secondary)]" : "border-[var(--border)] bg-[var(--bg-primary)]"
+                            }`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => toggleHistoryCompare(entry.runId)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                toggleHistoryCompare(entry.runId);
+                              }
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium">
+                                  Periodo {entry.horizonDays} dias - {new Date(entry.timestamp).toLocaleString("es-AR")}
+                                </div>
+                                <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                                  Recomendacion: {entry.summary.recommendation} | Margen: {fmtMoney(entry.summary.totalMargin.mean)}
+                                </div>
+                                <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                                  Ingreso: {fmtMoney(entry.summary.totalRevenue.mean)} | Costo: {fmtMoney(entry.summary.totalCost.mean)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
 
           {sidebarTab === "optimization" && optimization && (
@@ -519,6 +649,21 @@ export default function Home() {
               ))}
             </section>
           )}
+
+          <div className="mt-3 border-t border-[var(--border)] pt-3">
+            <button
+              type="button"
+              onClick={() => setSidebarTab("history")}
+              className={`flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-sm transition-colors ${
+                sidebarTab === "history"
+                  ? "border-[var(--accent)] bg-[var(--btn-secondary)] text-[var(--text-primary)]"
+                  : "border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--btn-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <GearIcon />
+              <span>Historial</span>
+            </button>
+          </div>
         </aside>
 
         <main className="flex min-h-screen flex-col p-4">
@@ -552,6 +697,147 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+function HistoryCompareModal({
+  open,
+  left,
+  right,
+  onClose,
+}: {
+  open: boolean;
+  left: HistoryEntry | null;
+  right: HistoryEntry | null;
+  onClose: () => void;
+}) {
+  if (!open || !left || !right || typeof document === "undefined") return null;
+
+  const fmtMoney = (value: number) => new Intl.NumberFormat("es-AR").format(Math.round(value));
+  const marginClass = (value: number) => (value < 0 ? "text-red-500" : value > 0 ? "text-emerald-500" : "");
+  const leftHorizon = Number.isFinite(left.horizonDays) ? left.horizonDays : null;
+  const rightHorizon = Number.isFinite(right.horizonDays) ? right.horizonDays : null;
+  const moneyCell = (label: string, value: number) => (
+    <span className={label === "Margen" ? marginClass(value) : undefined}>${fmtMoney(value)}</span>
+  );
+  const diffCell = (value: number, monetary = false) => <span>{monetary ? `$${fmtMoney(value)}` : fmtMoney(value)}</span>;
+  const rows: Array<{ label: string; a: ReactNode; b: ReactNode; diff: ReactNode }> = [
+    {
+      label: "Recomendacion",
+      a: left.summary.recommendation,
+      b: right.summary.recommendation,
+      diff: "No aplica",
+    },
+    {
+      label: "Ingreso economico total",
+      a: moneyCell("Ingreso economico total", left.summary.totalRevenue.mean),
+      b: moneyCell("Ingreso economico total", right.summary.totalRevenue.mean),
+      diff: diffCell(left.summary.totalRevenue.mean - right.summary.totalRevenue.mean, true),
+    },
+    {
+      label: "Costo de inversion total",
+      a: moneyCell("Costo de inversion total", left.summary.totalCost.mean),
+      b: moneyCell("Costo de inversion total", right.summary.totalCost.mean),
+      diff: diffCell(left.summary.totalCost.mean - right.summary.totalCost.mean, true),
+    },
+    {
+      label: "Margen",
+      a: moneyCell("Margen", left.summary.totalMargin.mean),
+      b: moneyCell("Margen", right.summary.totalMargin.mean),
+      diff: diffCell(left.summary.totalMargin.mean - right.summary.totalMargin.mean, true),
+    },
+    {
+      label: "Dispositivos recolectados",
+      a: fmtMoney(left.summary.totalDevices.mean),
+      b: fmtMoney(right.summary.totalDevices.mean),
+      diff: diffCell(left.summary.totalDevices.mean - right.summary.totalDevices.mean),
+    },
+    {
+      label: "Reacondicionados",
+      a: fmtMoney(left.summary.totalRefurbished.mean),
+      b: fmtMoney(right.summary.totalRefurbished.mean),
+      diff: diffCell(left.summary.totalRefurbished.mean - right.summary.totalRefurbished.mean),
+    },
+    {
+      label: "Chatarra",
+      a: fmtMoney(left.summary.totalScrap.mean),
+      b: fmtMoney(right.summary.totalScrap.mean),
+      diff: diffCell(left.summary.totalScrap.mean - right.summary.totalScrap.mean),
+    },
+    {
+      label: "Periodo utilizado",
+      a: leftHorizon !== null ? `${leftHorizon} dias` : "desconocido",
+      b: rightHorizon !== null ? `${rightHorizon} dias` : "desconocido",
+      diff: leftHorizon !== null && rightHorizon !== null
+        ? `${leftHorizon - rightHorizon} dias`
+        : "desconocido",
+    },
+  ];
+
+  return createPortal((
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-6 text-[var(--text-primary)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">Comparacion de recomendaciones</h3>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">Vista lado a lado basada en el resumen guardado en historial.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md border border-[var(--border)] px-3 py-1 text-sm">
+            Cerrar
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-4">
+            <div className="text-xs text-[var(--text-secondary)]">Corrida A</div>
+            <div className="mt-1 font-medium">
+              {left.scenario} - {new Date(left.timestamp).toLocaleString("es-AR")}
+            </div>
+            <div className="mt-1 text-sm text-[var(--text-secondary)]">
+              {left.summary.recommendation} | <span className={marginClass(left.summary.totalMargin.mean)}>Margen {fmtMoney(left.summary.totalMargin.mean)}</span>
+            </div>
+            <div className="mt-2 text-xs text-[var(--text-secondary)]">
+              Periodo utilizado: {leftHorizon !== null ? `${leftHorizon} dias` : "desconocido"}
+            </div>
+          </div>
+          <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-4">
+            <div className="text-xs text-[var(--text-secondary)]">Corrida B</div>
+            <div className="mt-1 font-medium">
+              {right.scenario} - {new Date(right.timestamp).toLocaleString("es-AR")}
+            </div>
+            <div className="mt-1 text-sm text-[var(--text-secondary)]">
+              {right.summary.recommendation} | <span className={marginClass(right.summary.totalMargin.mean)}>Margen {fmtMoney(right.summary.totalMargin.mean)}</span>
+            </div>
+            <div className="mt-2 text-xs text-[var(--text-secondary)]">
+              Periodo utilizado: {rightHorizon !== null ? `${rightHorizon} dias` : "desconocido"}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-[var(--text-secondary)]">
+              <tr>
+                <th className="py-2 pr-3">Metrica</th>
+                <th className="py-2 pr-3 text-right">A</th>
+                <th className="py-2 pr-3 text-right">B</th>
+                <th className="py-2 pr-3 text-right">Diferencia (A-B)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.label} className="border-t border-[var(--border)]">
+                  <td className="py-2 pr-3">{row.label}</td>
+                  <td className="py-2 pr-3 text-right">{row.a}</td>
+                  <td className="py-2 pr-3 text-right">{row.b}</td>
+                  <td className="py-2 pr-3 text-right">{row.diff}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  ), document.body);
 }
 
 function NumberField({
@@ -633,7 +919,7 @@ function TabButton({
       onClick={onClick}
       className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "bg-[var(--btn-active)] text-[var(--text-primary)]"
+          ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40"
           : "text-[var(--text-secondary)] hover:bg-[var(--btn-secondary)] hover:text-[var(--text-primary)]"
       }`}
     >
@@ -688,10 +974,19 @@ function ErrorPanel({ messages }: { messages: string[] }) {
   );
 }
 
-function ResultModal({ open, result, onClose }: { open: boolean; result: SimulationResult | null; onClose: () => void }) {
+function ResultModal({
+  open,
+  result,
+  onClose,
+}: {
+  open: boolean;
+  result: SimulationResult | null;
+  onClose: () => void;
+}) {
   if (!open || !result || typeof document === "undefined") return null;
   const ars = (n: number) => `$${new Intl.NumberFormat("es-AR").format(Math.round(n))}`;
   const num = (n: number) => new Intl.NumberFormat("es-AR").format(Math.round(n));
+  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   const s = result.summary;
   const invest = s.recommendation === "S1";
   const kioskName = (id: string) => result.input.kiosks.find((k) => k.id === id)?.nombre ?? id;
@@ -717,10 +1012,11 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
 
         <h4 className="mt-4 text-sm font-semibold text-[var(--text-secondary)]">Totales de la red</h4>
         <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-          <p>Ingreso economico total (ganancia): {ars(s.totalRevenue.mean)}</p>
+          <p>Ingreso economico total: {ars(s.totalRevenue.mean)}</p>
           <p>Costo de inversion total: {ars(s.totalCost.mean)}</p>
-          <p>Margen: {ars(s.totalMargin.mean)}</p>
-          <p>Amortizacion (dias): {num(s.amortizationDays.mean)}</p>
+          <p className={s.totalMargin.mean < 0 ? "text-red-500" : s.totalMargin.mean > 0 ? "text-emerald-500" : ""}>
+            Margen: {ars(s.totalMargin.mean)}
+          </p>
           <p>Dispositivos recolectados: {num(s.totalDevices.mean)}</p>
           <p>Reacondicionados / Chatarra: {num(s.totalRefurbished.mean)} / {num(s.totalScrap.mean)}</p>
           <p>Cobertura de demanda: {((result.spatial?.coveredDemandPct ?? 0) * 100).toFixed(1)}%</p>
@@ -734,9 +1030,9 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
               <tr>
                 <th className="py-1 pr-2">Kiosko</th>
                 <th className="py-1 pr-2 text-right">Arribos</th>
-                <th className="py-1 pr-2 text-right">T. serv. (min)</th>
                 <th className="py-1 pr-2 text-right">Aceptaron</th>
-                <th className="py-1 pr-2 text-right">Ganancia</th>
+                <th className="py-1 pr-2 text-right">Refurbished</th>
+                <th className="py-1 pr-2 text-right">Chatarra</th>
               </tr>
             </thead>
             <tbody>
@@ -744,20 +1040,19 @@ function ResultModal({ open, result, onClose }: { open: boolean; result: Simulat
                 <tr key={k.kioskId} className="border-t border-[var(--border)]">
                   <td className="py-1 pr-2">{kioskName(k.kioskId)}</td>
                   <td className="py-1 pr-2 text-right">{num(k.arrivals)}</td>
-                  <td className="py-1 pr-2 text-right">{k.avgServiceMinutes.toFixed(1)}</td>
                   <td className="py-1 pr-2 text-right">{num(k.accepted)}</td>
-                  <td className="py-1 pr-2 text-right">{ars(k.revenue)}</td>
+                  <td className="py-1 pr-2 text-right">
+                    {num(k.refurbished)} ({pct(k.accepted > 0 ? k.refurbished / k.accepted : 0)})
+                  </td>
+                  <td className="py-1 pr-2 text-right">
+                    {num(k.scrap)} ({pct(k.accepted > 0 ? k.scrap / k.accepted : 0)})
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {result.warnings.length > 0 && (
-          <div className="mt-4 rounded border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
-            {result.warnings[0]}
-          </div>
-        )}
       </div>
     </div>
   ), document.body);
