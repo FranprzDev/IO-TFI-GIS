@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { LcgRng } from "../src/lib/sim/rng";
+import { Prng } from "../src/lib/sim/prng";
 import { sampleBinomial, sampleNormal, samplePoisson, sampleUniform } from "../src/lib/sim/distributions";
 import { validateScenario } from "../src/lib/validation/scenario";
 import { runSimulation } from "../src/lib/sim/engine";
@@ -11,32 +11,32 @@ function approx(value: number, low: number, high: number) {
 }
 
 (function testUniform() {
-  const rng = new LcgRng(1234);
+  const prng = new Prng(1234);
   for (let i = 0; i < 1000; i++) {
-    const v = sampleUniform(rng, 4, 10);
+    const v = sampleUniform(prng, 4, 10);
     assert.ok(v >= 4 && v < 10);
   }
 })();
 
 (function testNormal() {
-  const rng = new LcgRng(999);
-  const vals = Array.from({ length: 12000 }, () => sampleNormal(rng, 100, 20));
+  const prng = new Prng(999);
+  const vals = Array.from({ length: 12000 }, () => sampleNormal(prng, 100, 20));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, 98, 102);
 })();
 
 (function testPoisson() {
-  const rng = new LcgRng(55);
-  const vals = Array.from({ length: 20000 }, () => samplePoisson(rng, 6));
+  const prng = new Prng(55);
+  const vals = Array.from({ length: 20000 }, () => samplePoisson(prng, 6));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, 5.7, 6.3);
 })();
 
 (function testBinomial() {
-  const rng = new LcgRng(77);
+  const prng = new Prng(77);
   const n = 20;
   const p = 0.7;
-  const vals = Array.from({ length: 20000 }, () => sampleBinomial(rng, n, p));
+  const vals = Array.from({ length: 20000 }, () => sampleBinomial(prng, n, p));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, n * p - 0.3, n * p + 0.3); // mean of Binomial(n,p) = n*p
   assert.ok(vals.every((v) => Number.isInteger(v) && v >= 0 && v <= n));

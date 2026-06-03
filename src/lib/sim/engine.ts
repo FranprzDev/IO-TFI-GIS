@@ -1,4 +1,4 @@
-import { LcgRng } from "./rng";
+import { Prng } from "./prng";
 import { createNormalSampler, sampleBinomial, samplePoisson, sampleUniform } from "./distributions";
 import { buildSpatialSnapshot, type SpatialSnapshot } from "@/lib/spatial/voronoi";
 import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationRunResult, SimulationResult } from "../../types/simulation";
@@ -51,7 +51,7 @@ interface RunOptions {
 
 /**
  * The spatial snapshot depends only on geometry (kiosks, zones, service
- * distance) — never on the RNG — so it is built once per simulation instead of
+ * distance) — never on the PRNG — so it is built once per simulation instead of
  * rebuilding the full Voronoi/Delaunay diagram repeatedly. It feeds the map and
  * the optimizer scoring; arrivals no longer depend on it.
  */
@@ -66,7 +66,7 @@ function* simulateRun(
   activeKiosks: Kiosk[],
 ): Generator<{ day: number; totalDays: number }, SimulationRunResult, void> {
   const seed = input.seed;
-  const rng = new LcgRng(seed);
+  const prng = new Prng(seed);
   const sampleNormal = createNormalSampler();
 
   const acc = new Map<string, { arrivals: number; accepted: number; refurbished: number; scrap: number; revenue: number; service: number; }>();
@@ -80,31 +80,31 @@ function* simulateRun(
 
       // Poisson arrivals per operating hour (9:00–22:00), independent per kiosk.
       for (let hour = 0; hour < OPERATING_HOURS_PER_DAY; hour++) {
-        const arrivals = samplePoisson(rng, ARRIVALS_LAMBDA_PER_HOUR);
+        const arrivals = samplePoisson(prng, ARRIVALS_LAMBDA_PER_HOUR);
         a.arrivals += arrivals;
 
         // Every arrival completes the appraisal (service time U[4,10]).
         for (let j = 0; j < arrivals; j++) {
-          a.service += sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
+          a.service += sampleUniform(prng, input.global.serviceTime.a, input.global.serviceTime.b);
         }
 
         // Offers accepted ~ Binomial(arrivals, p). Only accepters deliver a device.
-        const accepted = sampleBinomial(rng, arrivals, OFFER_ACCEPTANCE_P);
+        const accepted = sampleBinomial(prng, arrivals, OFFER_ACCEPTANCE_P);
         a.accepted += accepted;
 
         // Of the delivered devices, refurbishable ~ Binomial(accepted, 0.75); rest is scrap.
-        const refurbished = sampleBinomial(rng, accepted, REFURBISH_RATE);
+        const refurbished = sampleBinomial(prng, accepted, REFURBISH_RATE);
         const scrap = accepted - refurbished;
         a.refurbished += refurbished;
         a.scrap += scrap;
 
         // Device value ~ Normal per type; income (ganancia) = value * profit%.
         for (let j = 0; j < refurbished; j++) {
-          const value = Math.max(0, sampleNormal(rng, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
+          const value = Math.max(0, sampleNormal(prng, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
           a.revenue += value * REFURBISHED_PROFIT;
         }
         for (let j = 0; j < scrap; j++) {
-          const value = Math.max(0, sampleNormal(rng, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
+          const value = Math.max(0, sampleNormal(prng, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
           a.revenue += value * SCRAP_PROFIT;
         }
       }
