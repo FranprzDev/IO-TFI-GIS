@@ -1016,6 +1016,7 @@ function ResultModal({
           <p>Dispositivos recolectados: {num(s.totalDevices.mean)}</p>
           <p>Reacondicionados / Chatarra: {num(s.totalRefurbished.mean)} / {num(s.totalScrap.mean)}</p>
           <p>Cobertura de demanda: {((result.spatial?.coveredDemandPct ?? 0) * 100).toFixed(1)}%</p>
+          <p>Dias simulados: {result.input.global.horizonDays}</p>
           <p>Distancia ponderada: {(result.spatial?.weightedDistanceKm ?? 0).toFixed(2)} km</p>
         </div>
 
