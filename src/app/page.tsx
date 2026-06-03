@@ -385,7 +385,6 @@ export default function Home() {
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[400px_1fr]">
         <aside className="flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] p-4">
           <h1 className="text-xl font-bold">Simulador ecoATM</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Voronoi + optimizacion heuristica sobre kioskos CSV y manuales.</p>
 
           <section className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-1">
             <div className="grid grid-cols-3 gap-1">
