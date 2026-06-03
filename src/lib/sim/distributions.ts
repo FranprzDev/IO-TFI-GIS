@@ -6,17 +6,14 @@ export class Random {
   constructor(private readonly mcm: MCM) {}
 
   uniform(a: number, b: number): number {
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) {
-      throw new Error("Uniform requires finite a < b");
-    }
     return a + (b - a) * this.mcm.nextU01();
   }
 
+  /* 
+    Este método está hecho con una implementación del método de Box Muller 
+    De forma que no utiliza las funciones "sin" & "cos" por que son funciones penalizadas x el v8 de google.
+  */
   normal(mu: number, sigma: number): number {
-    if (!Number.isFinite(mu) || !Number.isFinite(sigma) || sigma <= 0) {
-      throw new Error("Normal requires finite mu and sigma > 0");
-    }
-
     if (this.spareNormal !== null) {
       const z = this.spareNormal;
       this.spareNormal = null;
@@ -37,34 +34,21 @@ export class Random {
     return mu + sigma * (u * mul);
   }
 
+  /* Utilizamos el método de Knuth (Bibliografía aplicada) */
   poisson(lambda: number): number {
-    if (!Number.isFinite(lambda) || lambda <= 0) {
-      throw new Error("Poisson requires finite lambda > 0");
-    }
+    const L = Math.exp(-lambda);
+    let p = 1;
+    let k = 0;
 
-    if (lambda < 30) {
-      const L = Math.exp(-lambda);
-      let p = 1;
-      let k = 0;
-      do {
-        k += 1;
-        p *= this.mcm.nextU01();
-      } while (p > L);
-      return k - 1;
-    }
+    do {
+      k += 1;
+      p *= this.mcm.nextU01();
+    } while (p > L);
 
-    const normalApprox = Math.round(this.normal(lambda, Math.sqrt(lambda)));
-    return Math.max(0, normalApprox);
+    return k - 1;
   }
 
   binomial(n: number, p: number): number {
-    if (!Number.isInteger(n) || n < 0) {
-      throw new Error("Binomial requires an integer n >= 0");
-    }
-    if (!Number.isFinite(p) || p < 0 || p > 1) {
-      throw new Error("Binomial requires 0 <= p <= 1");
-    }
-
     let successes = 0;
     for (let i = 0; i < n; i++) {
       if (this.mcm.nextU01() < p) successes += 1;
