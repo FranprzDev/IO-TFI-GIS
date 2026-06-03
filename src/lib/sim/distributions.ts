@@ -1,13 +1,13 @@
-import type { Prng } from "./prng";
+import type { MCM } from "./mcm";
 
-export function sampleUniform(prng: Prng, a: number, b: number): number {
+export function sampleUniform(mcm: MCM, a: number, b: number): number {
   if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) {
     throw new Error("Uniform requires finite a < b");
   }
-  return a + (b - a) * prng.nextU01();
+  return a + (b - a) * mcm.nextU01();
 }
 
-export type NormalSampler = (prng: Prng, mu: number, sigma: number) => number;
+export type NormalSampler = (mcm: MCM, mu: number, sigma: number) => number;
 
 /**
  * Creates a Box-Muller normal sampler with its own `spare` state.
@@ -19,7 +19,7 @@ export type NormalSampler = (prng: Prng, mu: number, sigma: number) => number;
  */
 export function createNormalSampler(): NormalSampler {
   let spare: number | null = null;
-  return function sampleNormal(prng: Prng, mu: number, sigma: number): number {
+  return function sampleNormal(mcm: MCM, mu: number, sigma: number): number {
     if (!Number.isFinite(mu) || !Number.isFinite(sigma) || sigma <= 0) {
       throw new Error("Normal requires finite mu and sigma > 0");
     }
@@ -34,8 +34,8 @@ export function createNormalSampler(): NormalSampler {
     let v = 0;
     let s = 0;
     do {
-      u = 2 * prng.nextU01() - 1;
-      v = 2 * prng.nextU01() - 1;
+      u = 2 * mcm.nextU01() - 1;
+      v = 2 * mcm.nextU01() - 1;
       s = u * u + v * v;
     } while (s <= 0 || s >= 1);
 
@@ -48,11 +48,11 @@ export function createNormalSampler(): NormalSampler {
 // Backwards-compatible module-level sampler. Prefer `createNormalSampler()` for
 // any code that depends on reproducibility across independent PRNG streams.
 const defaultNormalSampler = createNormalSampler();
-export function sampleNormal(prng: Prng, mu: number, sigma: number): number {
-  return defaultNormalSampler(prng, mu, sigma);
+export function sampleNormal(mcm: MCM, mu: number, sigma: number): number {
+  return defaultNormalSampler(mcm, mu, sigma);
 }
 
-export function samplePoisson(prng: Prng, lambda: number): number {
+export function samplePoisson(mcm: MCM, lambda: number): number {
   if (!Number.isFinite(lambda) || lambda <= 0) {
     throw new Error("Poisson requires finite lambda > 0");
   }
@@ -63,12 +63,12 @@ export function samplePoisson(prng: Prng, lambda: number): number {
     let k = 0;
     do {
       k += 1;
-      p *= prng.nextU01();
+      p *= mcm.nextU01();
     } while (p > L);
     return k - 1;
   }
 
-  const normalApprox = Math.round(sampleNormal(prng, lambda, Math.sqrt(lambda)));
+  const normalApprox = Math.round(sampleNormal(mcm, lambda, Math.sqrt(lambda)));
   return Math.max(0, normalApprox);
 }
 
@@ -78,7 +78,7 @@ export function samplePoisson(prng: Prng, lambda: number): number {
  * trial counts here (per-hour arrivals/acceptances) are small, so the linear
  * count is efficient and exact. Bernoulli(p) is just Binomial(1, p).
  */
-export function sampleBinomial(prng: Prng, n: number, p: number): number {
+export function sampleBinomial(mcm: MCM, n: number, p: number): number {
   if (!Number.isInteger(n) || n < 0) {
     throw new Error("Binomial requires an integer n >= 0");
   }
@@ -87,7 +87,7 @@ export function sampleBinomial(prng: Prng, n: number, p: number): number {
   }
   let successes = 0;
   for (let i = 0; i < n; i++) {
-    if (prng.nextU01() < p) successes += 1;
+    if (mcm.nextU01() < p) successes += 1;
   }
   return successes;
 }

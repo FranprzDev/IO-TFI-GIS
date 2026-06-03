@@ -264,12 +264,12 @@ Una configuraci�n se considera factible si cumple simult�neamente criterios 
 
 ### 21.6 Interfaz t�cnica m�nima esperada
 
-- `Prng.nextU01(): number`.
-- `sampleUniform(prng, a, b): number`.
-- `sampleNormal(prng, mu, sigma): number`.
-- `samplePoisson(prng, lambda): number`.
-- `sampleBinomial(prng, n, p): number`.
-- Todas las funciones deber�n recibir `prng` expl�cito para trazabilidad y testeo.
+- `MCM.nextU01(): number` (MCM = Metodo Congruencial Mixto, el PRNG).
+- `sampleUniform(mcm, a, b): number`.
+- `sampleNormal(mcm, mu, sigma): number`.
+- `samplePoisson(mcm, lambda): number`.
+- `sampleBinomial(mcm, n, p): number`.
+- Todas las funciones deber�n recibir `mcm` expl�cito para trazabilidad y testeo.
 
 ### 21.7 Interfaces TypeScript obligatorias para typing seguro
 
