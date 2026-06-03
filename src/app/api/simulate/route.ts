@@ -1,12 +1,17 @@
 import { runSimulationAsync } from "@/lib/sim/engine";
 import { validateScenario } from "@/lib/validation/scenario";
+import { isWithinTucumanBounds } from "@/lib/geo/tucuman";
 import type { ScenarioInput } from "@/types/simulation";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as ScenarioInput;
+  const raw = (await req.json()) as ScenarioInput;
+  const body: ScenarioInput = {
+    ...raw,
+    demandZones: (raw.demandZones ?? []).filter((zone) => isWithinTucumanBounds(zone.lat, zone.lon)),
+  };
   const errors = validateScenario(body);
   if (errors.length > 0) {
     return new Response(JSON.stringify({ ok: false, errors }), {

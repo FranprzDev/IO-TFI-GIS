@@ -123,7 +123,6 @@ export async function runOptimization(
   request: OptimizationRequest,
   onProgress?: (progress: OptimizationProgress) => void,
 ): Promise<OptimizationResult> {
-  const log = (...args: unknown[]) => console.log("[optimize-engine]", ...args);
   const effectiveMaxSites = Math.min(request.maxSites, request.kiosks.length);
   const effectiveMinSites = Math.min(request.minSites, effectiveMaxSites);
   const projectedDemandZones: ProjectedDemandZone[] = request.demandZones.map((zone) => ({
@@ -144,13 +143,6 @@ export async function runOptimization(
     }
   };
 
-  log("starting", {
-    minSites: effectiveMinSites,
-    maxSites: effectiveMaxSites,
-    kiosks: request.kiosks.length,
-    demandZones: request.demandZones.length,
-  });
-
   const getSpatial = (selectedIds: Set<string>): SpatialSnapshot => {
     const key = Array.from(selectedIds).sort().join("|");
     const cached = spatialCache.get(key);
@@ -166,13 +158,11 @@ export async function runOptimization(
   };
 
   const scoreBounds = await evaluateForScoreBounds(projectedKiosks, projectedDemandZones, request.global.serviceDistanceKm);
-  log("score bounds", scoreBounds);
   const lockedIds = new Set(request.kiosks.filter((kiosk) => kiosk.locked).map((kiosk) => kiosk.id));
   const coarseCandidates = request.kiosks.filter((kiosk) => kiosk.active !== false);
   const topScenarios: OptimizationScenarioSummary[] = [];
 
   for (let siteCount = effectiveMinSites; siteCount <= effectiveMaxSites; siteCount++) {
-    log("site count start", { siteCount });
     const selectedIds = new Set(lockedIds);
 
     while (selectedIds.size < siteCount) {
@@ -197,12 +187,6 @@ export async function runOptimization(
       if (!bestCandidate) break;
       selectedIds.add(bestCandidate.kiosk.id);
       spatialCache.set(Array.from(selectedIds).sort().join("|"), bestCandidate.spatial);
-      log("greedy pick", {
-        siteCount,
-        selected: Array.from(selectedIds),
-        best: bestCandidate.kiosk.id,
-        score: bestCandidate.score,
-      });
     }
 
     let improved = true;
@@ -230,12 +214,6 @@ export async function runOptimization(
             selectedIds.delete(selectedKiosk.id);
             selectedIds.add(candidate.id);
             improved = true;
-            log("swap improvement", {
-              siteCount,
-              out: selectedKiosk.id,
-              in: candidate.id,
-              score: trialScore,
-            });
             break;
           }
         }
@@ -251,13 +229,6 @@ export async function runOptimization(
       true,
     );
     const components = scoreSpatialMetrics(spatial, scoreBounds, request.scoreWeights);
-    log("site count finalized", {
-      siteCount,
-      selected: Array.from(selectedIds),
-      score: components.score,
-      coveredDemandPct: spatial.coveredDemandPct,
-      weightedDistanceKm: spatial.weightedDistanceKm,
-    });
     topScenarios.push({
       selectedKioskIds: Array.from(selectedIds),
       score: components.score,
@@ -277,12 +248,6 @@ export async function runOptimization(
   if (topScenarios.length === 0) {
     throw new Error("No se pudo construir ningun escenario valido con los parametros actuales.");
   }
-
-  log("finished", {
-    bestScore: topScenarios[0].score,
-    bestSites: topScenarios[0].selectedKioskIds.length,
-    scenarios: topScenarios.length,
-  });
 
   return {
     runId: `opt-${Date.now()}`,
