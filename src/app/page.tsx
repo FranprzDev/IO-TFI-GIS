@@ -37,15 +37,11 @@ const KioskLeafletMap = dynamic(() => import("@/components/KioskLeafletMap").the
 
 interface Draft {
   horizonDays: number;
-  capacity: number;
   serviceMinA: number;
   serviceMinB: number;
   valueMu: number;
   valueSigma: number;
   operationCost: number;
-  acquisitionPrice: number;
-  totalDemandMu: number;
-  totalDemandSigma: number;
   serviceDistanceKm: number;
   minSites: number;
   maxSites: number;
@@ -60,15 +56,11 @@ type SidebarTab = "simulation" | "optimization" | "settings";
 
 const baseDraft: Draft = {
   horizonDays: 180,
-  capacity: 100,
   serviceMinA: 4,
   serviceMinB: 10,
-  valueMu: 120,
-  valueSigma: 40,
-  operationCost: 22,
-  acquisitionPrice: 6500,
-  totalDemandMu: 110,
-  totalDemandSigma: 18,
+  valueMu: 168000,
+  valueSigma: 56000,
+  operationCost: 30800,
   serviceDistanceKm: 10,
   minSites: 3,
   maxSites: 6,
@@ -94,7 +86,7 @@ export default function Home() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; action: "run" | "optimize" | "clear" | null }>({ open: false, action: null });
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
-  const { placeKiosk } = useTucumanKioskPlacement(setKiosks, draft.acquisitionPrice);
+  const { placeKiosk } = useTucumanKioskPlacement(setKiosks);
 
   // Hydrate persisted values after mount only â€” reading localStorage during
   // render would make the server and client HTML disagree (hydration error).
@@ -123,7 +115,6 @@ export default function Home() {
           chain: k.cadena || "Gobierno",
           lat: k.latitud,
           lon: k.longitud,
-          acquisitionPrice: baseDraft.acquisitionPrice,
           source: "csv",
           active: true,
           attractivenessWeight: 1,
@@ -169,12 +160,9 @@ export default function Home() {
   }, [activeOptimizationScenario, optimization, result, selectedOptimizationIds, sidebarTab]);
 
   const valid = useMemo(() => {
-    return draft.capacity > 0
-      && draft.horizonDays > 0
+    return draft.horizonDays > 0
       && draft.serviceMinA < draft.serviceMinB
       && draft.valueSigma > 0
-      && draft.totalDemandMu > 0
-      && draft.totalDemandSigma > 0
       && draft.serviceDistanceKm > 0
       && draft.minSites > 0
       && optimizableKioskCount >= draft.minSites;
@@ -194,7 +182,6 @@ export default function Home() {
     const scenarioKiosks = kiosks
       .map((kiosk) => ({
         ...kiosk,
-        acquisitionPrice: draft.acquisitionPrice,
         active: selected ? selected.has(kiosk.id) : kiosk.active !== false,
       }))
       .filter((kiosk) => kiosk.active !== false);
@@ -206,14 +193,12 @@ export default function Home() {
       kiosks: scenarioKiosks,
       demandZones,
       global: {
-        capacityMaxDevices: draft.capacity,
         horizonDays: draft.horizonDays,
         confidenceLevel: 0.95,
         warmupDays: 0,
         serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
         deviceValue: { kind: "normal", mu: draft.valueMu, sigma: draft.valueSigma },
         operationCostPerDevice: draft.operationCost,
-        totalDailyDemand: { kind: "normal", mu: draft.totalDemandMu, sigma: draft.totalDemandSigma },
         serviceDistanceKm: draft.serviceDistanceKm,
       },
     };
@@ -222,7 +207,7 @@ export default function Home() {
   function buildOptimizationRequest(): OptimizationRequest {
     return {
       seed: Date.now(),
-      kiosks: kiosks.map((kiosk) => ({ ...kiosk, acquisitionPrice: draft.acquisitionPrice, active: true })),
+      kiosks: kiosks.map((kiosk) => ({ ...kiosk, active: true })),
       demandZones,
       global: buildInput().global,
       serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
@@ -487,9 +472,12 @@ export default function Home() {
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
                   <h2 className="rounded bg-[var(--btn-active)] px-2 py-1 text-sm">Parametros base</h2>
                   <NumberField label="Horizonte (dias)" value={draft.horizonDays} min={1} max={3650} onChange={(value) => setDraft({ ...draft, horizonDays: value })} />
-                  <NumberField label="Capacidad por kiosko" value={draft.capacity} min={1} max={1000} onChange={(value) => setDraft({ ...draft, capacity: value })} />
-                  <NumberField label="Precio por kiosko" value={draft.acquisitionPrice} min={0} max={100000} onChange={(value) => setDraft({ ...draft, acquisitionPrice: value })} />
                   <NumberField label="Distancia servicio (km)" value={draft.serviceDistanceKm} min={1} max={100} onChange={(value) => setDraft({ ...draft, serviceDistanceKm: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Costos por kiosko (fijos, en ARS)</div>
+                    <div className="mt-1 font-semibold">Adquisición: $28.000.000 <span className="font-normal text-[var(--text-secondary)]">(≈ USD 20.000)</span></div>
+                    <div className="font-semibold">Mantenimiento: $600.000 / 30 días <span className="font-normal text-[var(--text-secondary)]">(≈ USD 400)</span></div>
+                  </div>
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
@@ -507,18 +495,15 @@ export default function Home() {
                     distribution="Normal"
                     tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
                   >
-                    <NumberField label="Valor mu" value={draft.valueMu} min={0} max={1000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
-                    <NumberField label="Valor sigma" value={draft.valueSigma} min={1} max={1000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
+                    <NumberField label="Valor mu (ARS)" value={draft.valueMu} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
+                    <NumberField label="Valor sigma (ARS)" value={draft.valueSigma} min={1} max={100000000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
                   </DistributionField>
-                  <DistributionField
-                    title="Demanda total"
-                    distribution="Normal"
-                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
-                  >
-                    <NumberField label="Demanda total mu" value={draft.totalDemandMu} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandMu: value })} disabled />
-                    <NumberField label="Demanda total sigma" value={draft.totalDemandSigma} min={1} max={10000} onChange={(value) => setDraft({ ...draft, totalDemandSigma: value })} disabled />
-                  </DistributionField>
-                  <NumberField label="Costo operativo" value={draft.operationCost} min={0} max={1000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Llegada de usuarios (Poisson)</div>
+                    <div className="mt-1 font-semibold">λ = 5 usuarios/hora por kiosko</div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Valor fijo.</div>
+                  </div>
+                  <NumberField label="Costo operativo por dispositivo (ARS)" value={draft.operationCost} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">

@@ -22,7 +22,6 @@ export interface Kiosk {
   lat: number;
   lon: number;
   chain: string;
-  acquisitionPrice: number;
   source: KioskSource;
   active?: boolean;
   locked?: boolean;
@@ -30,14 +29,12 @@ export interface Kiosk {
 }
 
 export interface GlobalParams {
-  capacityMaxDevices: number;
   horizonDays: number;
   confidenceLevel: number;
   warmupDays: number;
   serviceTime: UniformDistributionParams;
   deviceValue: NormalDistributionParams;
   operationCostPerDevice: number;
-  totalDailyDemand: NormalDistributionParams;
   serviceDistanceKm: number;
 }
 
@@ -74,9 +71,7 @@ export interface KioskRunMetrics {
   revenue: number;
   cost: number;
   margin: number;
-  utilization: number;
   avgServiceMinutes: number;
-  collectionsTriggered: number;
 }
 
 export interface SimulationRunResult {

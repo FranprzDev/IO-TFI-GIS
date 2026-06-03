@@ -1,5 +1,5 @@
 import { LcgRng } from "./rng";
-import { createNormalSampler, sampleUniform } from "./distributions";
+import { createNormalSampler, samplePoisson, sampleUniform } from "./distributions";
 import { buildSpatialSnapshot, type SpatialSnapshot } from "@/lib/spatial/voronoi";
 import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationRunResult, SimulationResult } from "../../types/simulation";
 
@@ -8,89 +8,89 @@ export interface ProgressInfo {
   totalDays: number;
 }
 
+/**
+ * Fixed costs, in ARS. The whole financial model is denominated in pesos.
+ * USD↔ARS reference rate ≈ 1400 (from acquisition: USD 20.000 ≈ ARS 28.000.000).
+ */
+/** One-off cost of adding a kiosk at a location: USD 20.000 ≈ ARS 28.000.000. Fixed, not configurable. */
+const KIOSK_ACQUISITION_COST_ARS = 28_000_000;
+/** Recurring cost of keeping a kiosk active: USD 400 ≈ ARS 600.000 per 30 days. Fixed, not configurable. */
+const KIOSK_MAINTENANCE_COST_ARS_PER_30D = 600_000;
+const MAINTENANCE_PERIOD_DAYS = 30;
+
+/**
+ * User arrivals per kiosk follow a Poisson process. Each kiosk receives, on
+ * average, this many users per operating hour, independent of every other kiosk
+ * (no conglomerate / spatial-demand sharing). Fixed modelling assumptions.
+ */
+const ARRIVALS_LAMBDA_PER_HOUR = 5;
+/** Operating window: 9:00–22:00 = 13 hours. After that the day is over. */
+const OPERATING_HOURS_PER_DAY = 13;
+
 interface RunOptions {
   /** Build Voronoi cell polygons in the result's spatial snapshot (map only). */
   includeSpatialCells?: boolean;
 }
 
 /**
- * The spatial snapshot and demand shares depend only on geometry (kiosks,
- * zones, service distance) — never on the RNG — so they are built once per
- * simulation, instead of rebuilding the full Voronoi/Delaunay diagram repeatedly.
+ * The spatial snapshot depends only on geometry (kiosks, zones, service
+ * distance) — never on the RNG — so it is built once per simulation instead of
+ * rebuilding the full Voronoi/Delaunay diagram repeatedly. It feeds the map and
+ * the optimizer scoring; arrivals no longer depend on it.
  */
 function prepareSharedState(input: ScenarioInput, includeCells: boolean) {
   const activeKiosks = input.kiosks.filter((k) => k.active !== false);
   const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm, { includeCells });
-  const totalDemandWeight = Object.values(spatial.demandByKiosk).reduce((sum, item) => sum + item.effectiveDemand, 0);
-  const demandShareByKiosk = new Map(
-    activeKiosks.map((kiosk) => {
-      const assignedDemand = spatial.demandByKiosk[kiosk.id]?.effectiveDemand ?? 0;
-      const share = totalDemandWeight > 0 ? assignedDemand / totalDemandWeight : 0;
-      return [kiosk.id, share];
-    }),
-  );
-  return { activeKiosks, spatial, demandShareByKiosk };
+  return { activeKiosks, spatial };
 }
 
 function* simulateRun(
   input: ScenarioInput,
   activeKiosks: Kiosk[],
-  demandShareByKiosk: Map<string, number>,
 ): Generator<{ day: number; totalDays: number }, SimulationRunResult, void> {
   const seed = input.seed;
   const rng = new LcgRng(seed);
   const sampleNormal = createNormalSampler();
 
-  const acc = new Map<string, { devices: number; revenue: number; cost: number; service: number; slots: number; collections: number; usedDays: number; }>();
+  const acc = new Map<string, { devices: number; revenue: number; cost: number; service: number; }>();
   for (const kiosk of activeKiosks) {
-    acc.set(kiosk.id, { devices: 0, revenue: 0, cost: 0, service: 0, slots: 0, collections: 0, usedDays: 0 });
+    acc.set(kiosk.id, { devices: 0, revenue: 0, cost: 0, service: 0 });
   }
 
-  const threshold = Math.floor(input.global.capacityMaxDevices * 0.85);
-
   for (let day = 1; day <= input.global.horizonDays; day++) {
-    const totalInterested = Math.max(0, Math.round(sampleNormal(rng, input.global.totalDailyDemand.mu, input.global.totalDailyDemand.sigma)));
-    const arrivalsByKiosk = allocateDailyDemand(activeKiosks, totalInterested, demandShareByKiosk);
-
     for (const kiosk of activeKiosks) {
       const a = acc.get(kiosk.id)!;
-      const arrivals = arrivalsByKiosk.get(kiosk.id) ?? 0;
-      a.usedDays += 1;
 
-      for (let j = 0; j < arrivals; j++) {
-        const serviceMin = sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
-        const value = Math.max(0, sampleNormal(rng, input.global.deviceValue.mu, input.global.deviceValue.sigma));
-        const dayCapacityLeft = input.global.capacityMaxDevices - a.slots;
-        if (dayCapacityLeft <= 0) continue;
+      // Poisson arrivals per operating hour (9:00–22:00), independent per kiosk.
+      for (let hour = 0; hour < OPERATING_HOURS_PER_DAY; hour++) {
+        const arrivals = samplePoisson(rng, ARRIVALS_LAMBDA_PER_HOUR);
+        for (let j = 0; j < arrivals; j++) {
+          const serviceMin = sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
+          const value = Math.max(0, sampleNormal(rng, input.global.deviceValue.mu, input.global.deviceValue.sigma));
 
-        a.devices += 1;
-        a.revenue += value;
-        a.cost += input.global.operationCostPerDevice;
-        a.service += serviceMin;
-        a.slots += 1;
-
-        if (a.slots >= threshold) {
-          a.collections += 1;
-          a.slots = 0;
+          a.devices += 1;
+          a.revenue += value;
+          a.cost += input.global.operationCostPerDevice;
+          a.service += serviceMin;
         }
       }
     }
     yield { day, totalDays: input.global.horizonDays };
   }
 
+  // Acquisition is a one-off; maintenance accrues every 30 days over the horizon.
+  const maintenancePerKiosk = KIOSK_MAINTENANCE_COST_ARS_PER_30D * (input.global.horizonDays / MAINTENANCE_PERIOD_DAYS);
+  const fixedCostPerKiosk = KIOSK_ACQUISITION_COST_ARS + maintenancePerKiosk;
+
   const kiosks: KioskRunMetrics[] = activeKiosks.map((k) => {
     const v = acc.get(k.id)!;
-    const capacityDays = v.usedDays * input.global.capacityMaxDevices;
-    const utilization = capacityDays > 0 ? v.devices / capacityDays : 0;
     return {
       kioskId: k.id,
       devicesCollected: v.devices,
       revenue: v.revenue,
-      cost: v.cost + k.acquisitionPrice,
-      margin: v.revenue - (v.cost + k.acquisitionPrice),
-      utilization,
+      cost: v.cost + fixedCostPerKiosk,
+      margin: v.revenue - (v.cost + fixedCostPerKiosk),
       avgServiceMinutes: v.devices > 0 ? v.service / v.devices : 0,
-      collectionsTriggered: v.collections,
     };
   });
 
@@ -98,55 +98,17 @@ function* simulateRun(
   const totalRevenue = kiosks.reduce((s, k) => s + k.revenue, 0);
   const totalCost = kiosks.reduce((s, k) => s + k.cost, 0);
   const totalMargin = totalRevenue - totalCost;
+  const totalAcquisition = activeKiosks.length * KIOSK_ACQUISITION_COST_ARS;
   const amortizationDays = totalMargin > 0
-    ? Math.max(1, Math.round((activeKiosks.reduce((s, k) => s + k.acquisitionPrice, 0) / totalMargin) * input.global.horizonDays))
+    ? Math.max(1, Math.round((totalAcquisition / totalMargin) * input.global.horizonDays))
     : Number.POSITIVE_INFINITY;
   const feasible = totalMargin >= 0 && amortizationDays <= input.global.horizonDays;
 
   return { seed, kiosks, totalDevices, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
 }
 
-function overConfigWarnings(input: ScenarioInput, spatial: SpatialSnapshot): string[] {
-  const warnings: string[] = [];
-  const activeKiosks = input.kiosks.filter((k) => k.active !== false);
-  const totalWeight = Math.max(1, spatial.capturedDemand);
-
-  for (const kiosk of activeKiosks) {
-    const assignedDemand = spatial.demandByKiosk[kiosk.id]?.assignedDemand ?? 0;
-    const expectedPerDay = input.global.totalDailyDemand.mu * (assignedDemand / totalWeight);
-    const threshold = input.global.capacityMaxDevices * 0.2;
-    if (expectedPerDay < threshold) {
-      warnings.push(`Posible sobreconfiguracion en ${kiosk.nombre}: demanda potencial diaria ${expectedPerDay.toFixed(1)} < ${threshold.toFixed(1)}`);
-    }
-  }
-  return warnings;
-}
-
-function allocateDailyDemand(
-  kiosks: Kiosk[],
-  totalInterested: number,
-  demandShareByKiosk: Map<string, number>,
-): Map<string, number> {
-  const baseAssignments = kiosks.map((kiosk) => {
-    const exact = totalInterested * (demandShareByKiosk.get(kiosk.id) ?? 0);
-    const base = Math.floor(exact);
-    return {
-      kioskId: kiosk.id,
-      base,
-      fraction: exact - base,
-    };
-  });
-
-  const assigned = new Map<string, number>(baseAssignments.map((item) => [item.kioskId, item.base]));
-  let remainder = totalInterested - baseAssignments.reduce((sum, item) => sum + item.base, 0);
-
-  for (const item of baseAssignments.sort((a, b) => b.fraction - a.fraction)) {
-    if (remainder <= 0) break;
-    assigned.set(item.kioskId, (assigned.get(item.kioskId) ?? 0) + 1);
-    remainder -= 1;
-  }
-
-  return assigned;
+function overConfigWarnings(): string[] {
+  return [];
 }
 
 /** Builds the result summary from a single simulation run. */
@@ -170,7 +132,7 @@ function buildResult(input: ScenarioInput, run: SimulationRunResult, spatial: Sp
     timestamp: new Date().toISOString(),
     input,
     summary: buildSummary(run, input.global.horizonDays),
-    warnings: overConfigWarnings(input, spatial),
+    warnings: overConfigWarnings(),
     spatial,
   };
 }
@@ -185,9 +147,9 @@ export function runSimulationWithProgress(
   onProgress?: (info: ProgressInfo) => void,
   options?: RunOptions,
 ): SimulationResult {
-  const { activeKiosks, spatial, demandShareByKiosk } = prepareSharedState(input, options?.includeSpatialCells ?? true);
+  const { activeKiosks, spatial } = prepareSharedState(input, options?.includeSpatialCells ?? true);
 
-  const gen = simulateRun(input, activeKiosks, demandShareByKiosk);
+  const gen = simulateRun(input, activeKiosks);
   let step = gen.next();
   while (!step.done) {
     onProgress?.(step.value);
@@ -206,9 +168,9 @@ export async function runSimulationAsync(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
 ): Promise<SimulationResult> {
-  const { activeKiosks, spatial, demandShareByKiosk } = prepareSharedState(input, true);
+  const { activeKiosks, spatial } = prepareSharedState(input, true);
 
-  const gen = simulateRun(input, activeKiosks, demandShareByKiosk);
+  const gen = simulateRun(input, activeKiosks);
   let step = gen.next();
   while (!step.done) {
     onProgress?.(step.value);
