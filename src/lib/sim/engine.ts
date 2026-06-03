@@ -1,5 +1,5 @@
 import { LcgRng } from "./rng";
-import { createNormalSampler, samplePoisson, sampleUniform } from "./distributions";
+import { createNormalSampler, sampleBinomial, samplePoisson, sampleUniform } from "./distributions";
 import { buildSpatialSnapshot, type SpatialSnapshot } from "@/lib/spatial/voronoi";
 import type { Kiosk, KioskRunMetrics, ScenarioInput, SimulationRunResult, SimulationResult } from "../../types/simulation";
 
@@ -81,25 +81,31 @@ function* simulateRun(
       // Poisson arrivals per operating hour (9:00–22:00), independent per kiosk.
       for (let hour = 0; hour < OPERATING_HOURS_PER_DAY; hour++) {
         const arrivals = samplePoisson(rng, ARRIVALS_LAMBDA_PER_HOUR);
+        a.arrivals += arrivals;
+
+        // Every arrival completes the appraisal (service time U[4,10]).
         for (let j = 0; j < arrivals; j++) {
-          // Every arrival completes the appraisal (service time) and gets an offer.
-          a.arrivals += 1;
           a.service += sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
+        }
 
-          // Offer acceptance ~ Bernoulli(p). Rejecters leave without delivering.
-          if (rng.nextU01() >= OFFER_ACCEPTANCE_P) continue;
-          a.accepted += 1;
+        // Offers accepted ~ Binomial(arrivals, p). Only accepters deliver a device.
+        const accepted = sampleBinomial(rng, arrivals, OFFER_ACCEPTANCE_P);
+        a.accepted += accepted;
 
-          // Delivered device: refurbishable (75%) or scrap (25%); income = value * profit%.
-          if (rng.nextU01() < REFURBISH_RATE) {
-            a.refurbished += 1;
-            const value = Math.max(0, sampleNormal(rng, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
-            a.revenue += value * REFURBISHED_PROFIT;
-          } else {
-            a.scrap += 1;
-            const value = Math.max(0, sampleNormal(rng, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
-            a.revenue += value * SCRAP_PROFIT;
-          }
+        // Of the delivered devices, refurbishable ~ Binomial(accepted, 0.75); rest is scrap.
+        const refurbished = sampleBinomial(rng, accepted, REFURBISH_RATE);
+        const scrap = accepted - refurbished;
+        a.refurbished += refurbished;
+        a.scrap += scrap;
+
+        // Device value ~ Normal per type; income (ganancia) = value * profit%.
+        for (let j = 0; j < refurbished; j++) {
+          const value = Math.max(0, sampleNormal(rng, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
+          a.revenue += value * REFURBISHED_PROFIT;
+        }
+        for (let j = 0; j < scrap; j++) {
+          const value = Math.max(0, sampleNormal(rng, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
+          a.revenue += value * SCRAP_PROFIT;
         }
       }
     }

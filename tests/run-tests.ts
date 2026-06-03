@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { LcgRng } from "../src/lib/sim/rng";
-import { sampleNormal, samplePoisson, sampleUniform } from "../src/lib/sim/distributions";
+import { sampleBinomial, sampleNormal, samplePoisson, sampleUniform } from "../src/lib/sim/distributions";
 import { validateScenario } from "../src/lib/validation/scenario";
 import { runSimulation } from "../src/lib/sim/engine";
 import { loadDatasets } from "../src/lib/data/csv";
@@ -30,6 +30,16 @@ function approx(value: number, low: number, high: number) {
   const vals = Array.from({ length: 20000 }, () => samplePoisson(rng, 6));
   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
   approx(avg, 5.7, 6.3);
+})();
+
+(function testBinomial() {
+  const rng = new LcgRng(77);
+  const n = 20;
+  const p = 0.7;
+  const vals = Array.from({ length: 20000 }, () => sampleBinomial(rng, n, p));
+  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+  approx(avg, n * p - 0.3, n * p + 0.3); // mean of Binomial(n,p) = n*p
+  assert.ok(vals.every((v) => Number.isInteger(v) && v >= 0 && v <= n));
 })();
 
 const base: ScenarioInput = {

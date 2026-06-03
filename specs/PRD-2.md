@@ -28,7 +28,7 @@ configuración dada, en un horizonte dado.
 | Tipo de dispositivo | 75% reacondicionable / 25% chatarra | Bernoulli 75/25 por dispositivo | ✅ |
 | Valor reacondicionado | Normal μ=$250.000, σ=$100.000; ganancia 30% | N(250k,100k), ganancia 30% | ✅ |
 | Valor chatarra | Normal μ=$15.000, σ=$10.000; ganancia 10% | N(15k,10k), ganancia 10% | ✅ |
-| Aceptación de oferta | Binomial p = 0,70 | Bernoulli p=0,70 por usuario | ✅ |
+| Aceptación de oferta | Binomial p = 0,70 | Binomial(arribos, 0,70) por hora | ✅ |
 | Ingreso por equipo | valor × % de ganancia (30% / 10%) | valor × ganancia% | ✅ |
 | Salidas detalladas | por kiosko + totales de red | por kiosko + red (ResultModal) | ✅ |
 
@@ -47,12 +47,14 @@ están implementados.
 
 Por cada **usuario que arriba** (Poisson) y **completa la tasación** (servicio U[4,10]):
 
-1. **Oferta y aceptación.** El usuario acepta la oferta con probabilidad **p = 0,70**
-   (Binomial por evento independiente). Si rechaza (30%), se retira sin entregar el
-   dispositivo: no genera recolección ni ingreso. Solo los aceptados continúan.
+1. **Oferta y aceptación.** La cantidad de usuarios que aceptan la oferta se modela como
+   **Binomial(arribos, p=0,70)** (cada usuario es un ensayo independiente con probabilidad
+   constante de aceptar). Los que rechazan (30%) se retiran sin entregar el dispositivo: no
+   generan recolección ni ingreso.
 
 2. **Clasificación del dispositivo entregado.**
-   - **75% reacondicionable**, **25% chatarra** (Binomial / Bernoulli por dispositivo).
+   - De los aceptados, los reacondicionables son **Binomial(aceptados, p=0,75)**; el resto
+     (25%) es chatarra.
 
 3. **Valor económico del dispositivo** (Normal, truncada a ≥ 0):
    - Reacondicionable: μ = $250.000 ARS, σ = $100.000 ARS.

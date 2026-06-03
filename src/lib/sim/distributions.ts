@@ -71,3 +71,23 @@ export function samplePoisson(rng: Rng, lambda: number): number {
   const normalApprox = Math.round(sampleNormal(rng, lambda, Math.sqrt(lambda)));
   return Math.max(0, normalApprox);
 }
+
+/**
+ * Binomial(n, p): number of successes in n independent Bernoulli(p) trials.
+ * Sampled by counting n direct Bernoulli draws — the textbook definition. The
+ * trial counts here (per-hour arrivals/acceptances) are small, so the linear
+ * count is efficient and exact. Bernoulli(p) is just Binomial(1, p).
+ */
+export function sampleBinomial(rng: Rng, n: number, p: number): number {
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error("Binomial requires an integer n >= 0");
+  }
+  if (!Number.isFinite(p) || p < 0 || p > 1) {
+    throw new Error("Binomial requires 0 <= p <= 1");
+  }
+  let successes = 0;
+  for (let i = 0; i < n; i++) {
+    if (rng.nextU01() < p) successes += 1;
+  }
+  return successes;
+}
