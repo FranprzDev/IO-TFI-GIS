@@ -20,6 +20,20 @@ export interface OptimizationProgress {
   siteCount: number;
 }
 
+/**
+ * Hard cap on the largest configuration the optimizer explores. Cost grows
+ * super-linearly with the number of candidate sites (greedy + swap across every
+ * site count), so searching up to "all kiosks" makes adding a few points blow up
+ * the runtime/memory. Capping the upper bound keeps it bounded and predictable.
+ */
+export const MAX_OPTIMIZER_SITES = 17;
+
+/** Upper bound on cached spatial snapshots so the cache cannot grow unbounded. */
+const SPATIAL_CACHE_LIMIT = 50_000;
+
+/** Max improving passes per site count in the swap phase (guards pathological loops). */
+const MAX_SWAP_PASSES = 30;
+
 function normalize(value: number, min: number, max: number): number {
   if (max <= min) return 1;
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -103,7 +117,7 @@ export async function runOptimization(
   request: OptimizationRequest,
   onProgress?: (progress: OptimizationProgress) => void,
 ): Promise<OptimizationResult> {
-  const effectiveMaxSites = Math.min(request.maxSites, request.kiosks.length);
+  const effectiveMaxSites = Math.min(request.maxSites, request.kiosks.length, MAX_OPTIMIZER_SITES);
   const effectiveMinSites = Math.min(request.minSites, effectiveMaxSites);
   const projectedDemandZones: ProjectedDemandZone[] = request.demandZones.map((zone) => ({
     zone,
@@ -123,17 +137,30 @@ export async function runOptimization(
     }
   };
 
+  const cacheSet = (key: string, spatial: SpatialSnapshot) => {
+    spatialCache.set(key, spatial);
+    if (spatialCache.size > SPATIAL_CACHE_LIMIT) {
+      const oldest = spatialCache.keys().next().value;
+      if (oldest !== undefined) spatialCache.delete(oldest);
+    }
+  };
+
   const getSpatial = (selectedIds: Set<string>): SpatialSnapshot => {
     const key = Array.from(selectedIds).sort().join("|");
     const cached = spatialCache.get(key);
-    if (cached) return cached;
+    if (cached) {
+      // LRU touch: move to most-recently-used position.
+      spatialCache.delete(key);
+      spatialCache.set(key, cached);
+      return cached;
+    }
     const spatial = evaluateSpatialScenario(
       projectedKiosks,
       projectedDemandZones,
       selectedIds,
       request.global.serviceDistanceKm,
     );
-    spatialCache.set(key, spatial);
+    cacheSet(key, spatial);
     return spatial;
   };
 
@@ -165,11 +192,13 @@ export async function runOptimization(
 
       if (!bestCandidate) break;
       selectedIds.add(bestCandidate.kiosk.id);
-      spatialCache.set(Array.from(selectedIds).sort().join("|"), bestCandidate.spatial);
+      cacheSet(Array.from(selectedIds).sort().join("|"), bestCandidate.spatial);
     }
 
     let improved = true;
-    while (improved) {
+    let swapPasses = 0;
+    while (improved && swapPasses < MAX_SWAP_PASSES) {
+      swapPasses += 1;
       improved = false;
       const currentSpatial = getSpatial(selectedIds);
       const currentScore = scoreSpatialMetrics(currentSpatial, scoreBounds, request.scoreWeights).score;
