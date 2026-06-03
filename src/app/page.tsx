@@ -39,9 +39,6 @@ interface Draft {
   horizonDays: number;
   serviceMinA: number;
   serviceMinB: number;
-  valueMu: number;
-  valueSigma: number;
-  operationCost: number;
   serviceDistanceKm: number;
   minSites: number;
   maxSites: number;
@@ -58,9 +55,6 @@ const baseDraft: Draft = {
   horizonDays: 180,
   serviceMinA: 4,
   serviceMinB: 10,
-  valueMu: 168000,
-  valueSigma: 56000,
-  operationCost: 30800,
   serviceDistanceKm: 10,
   minSites: 3,
   maxSites: 6,
@@ -162,7 +156,6 @@ export default function Home() {
   const valid = useMemo(() => {
     return draft.horizonDays > 0
       && draft.serviceMinA < draft.serviceMinB
-      && draft.valueSigma > 0
       && draft.serviceDistanceKm > 0
       && draft.minSites > 0
       && optimizableKioskCount >= draft.minSites;
@@ -197,8 +190,6 @@ export default function Home() {
         confidenceLevel: 0.95,
         warmupDays: 0,
         serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
-        deviceValue: { kind: "normal", mu: draft.valueMu, sigma: draft.valueSigma },
-        operationCostPerDevice: draft.operationCost,
         serviceDistanceKm: draft.serviceDistanceKm,
       },
     };
@@ -211,8 +202,6 @@ export default function Home() {
       demandZones,
       global: buildInput().global,
       serviceTime: { kind: "uniform", a: draft.serviceMinA, b: draft.serviceMinB },
-      deviceValue: { kind: "normal", mu: draft.valueMu, sigma: draft.valueSigma },
-      operationCostPerDevice: draft.operationCost,
       minSites: draft.minSites,
       maxSites: optimizableKioskCount,
       scoreWeights: {
@@ -490,20 +479,17 @@ export default function Home() {
                     <NumberField label="Tiempo servicio min A" value={draft.serviceMinA} min={0} max={120} onChange={(value) => setDraft({ ...draft, serviceMinA: value })} disabled />
                     <NumberField label="Tiempo servicio min B" value={draft.serviceMinB} min={draft.serviceMinA + 1} max={240} onChange={(value) => setDraft({ ...draft, serviceMinB: value })} disabled />
                   </DistributionField>
-                  <DistributionField
-                    title="Valor de dispositivo"
-                    distribution="Normal"
-                    tooltip="Lorem ipsum dolor sit amet, consectetur adipiscing elit."
-                  >
-                    <NumberField label="Valor mu (ARS)" value={draft.valueMu} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, valueMu: value })} disabled />
-                    <NumberField label="Valor sigma (ARS)" value={draft.valueSigma} min={1} max={100000000} onChange={(value) => setDraft({ ...draft, valueSigma: value })} disabled />
-                  </DistributionField>
                   <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
                     <div className="text-[var(--text-secondary)]">Llegada de usuarios (Poisson)</div>
                     <div className="mt-1 font-semibold">λ = 5 usuarios/hora por kiosko</div>
                     <div className="mt-1 text-xs text-[var(--text-secondary)]">Horario operativo 9:00–22:00 (13 h/día). Valor fijo.</div>
                   </div>
-                  <NumberField label="Costo operativo por dispositivo (ARS)" value={draft.operationCost} min={0} max={100000000} onChange={(value) => setDraft({ ...draft, operationCost: value })} />
+                  <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm">
+                    <div className="text-[var(--text-secondary)]">Modelo de ingresos (fijo, en ARS)</div>
+                    <div className="mt-1">Aceptación de oferta: <span className="font-semibold">70%</span> (Binomial)</div>
+                    <div className="mt-1">Reacondicionable <span className="font-semibold">75%</span>: N($250.000, $100.000), ganancia <span className="font-semibold">30%</span></div>
+                    <div className="mt-1">Chatarra <span className="font-semibold">25%</span>: N($15.000, $10.000), ganancia <span className="font-semibold">10%</span></div>
+                  </div>
                 </section>
 
                 <section className="space-y-3 rounded border border-[var(--border)] p-3">
@@ -707,25 +693,69 @@ function ErrorPanel({ messages }: { messages: string[] }) {
 
 function ResultModal({ open, result, onClose }: { open: boolean; result: SimulationResult | null; onClose: () => void }) {
   if (!open || !result || typeof document === "undefined") return null;
+  const ars = (n: number) => `$${new Intl.NumberFormat("es-AR").format(Math.round(n))}`;
+  const num = (n: number) => new Intl.NumberFormat("es-AR").format(Math.round(n));
+  const s = result.summary;
+  const invest = s.recommendation === "S1";
+  const kioskName = (id: string) => result.input.kiosks.find((k) => k.id === id)?.nombre ?? id;
   return createPortal((
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-6 text-[var(--text-primary)]">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-6 text-[var(--text-primary)]">
         <div className="flex items-start justify-between gap-4">
           <h3 className="text-lg font-semibold">Resultado simulacion</h3>
           <button type="button" onClick={onClose} className="rounded-md border border-[var(--border)] px-3 py-1 text-sm">
             Cerrar
           </button>
         </div>
-        <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
-          <p>Margen: {result.summary.totalMargin.mean.toFixed(2)}</p>
-          <p>Ingresos: {result.summary.totalRevenue.mean.toFixed(2)}</p>
-          <p>Amortizacion (dias): {result.summary.amortizationDays.mean.toFixed(0)}</p>
-          <p>Factible: {result.summary.feasibleProbability >= 1 ? "Si" : "No"}</p>
-          <p>Cobertura: {((result.spatial?.coveredDemandPct ?? 0) * 100).toFixed(1)}%</p>
-          <p>Distancia ponderada: {(result.spatial?.weightedDistanceKm ?? 0).toFixed(2)} km</p>
-          <p>Balance de carga: {(result.spatial?.loadBalanceScore ?? 0).toFixed(3)}</p>
-          <p>Canibalizacion: {((result.spatial?.cannibalizationPct ?? 0) * 100).toFixed(1)}%</p>
+
+        <div className={`mt-4 rounded-lg border p-3 ${invest ? "border-emerald-400/50 bg-emerald-400/10" : "border-red-400/50 bg-red-400/10"}`}>
+          <div className="text-sm text-[var(--text-secondary)]">Recomendacion de inversion</div>
+          <div className="mt-1 text-lg font-bold">
+            {s.recommendation} — {invest ? "Se recomienda invertir" : "No se recomienda invertir"}
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-secondary)]">
+            Ganancia {ars(s.totalRevenue.mean)} {invest ? ">" : "≤"} inversion {ars(s.totalCost.mean)}
+          </div>
         </div>
+
+        <h4 className="mt-4 text-sm font-semibold text-[var(--text-secondary)]">Totales de la red</h4>
+        <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
+          <p>Ingreso economico total (ganancia): {ars(s.totalRevenue.mean)}</p>
+          <p>Costo de inversion total: {ars(s.totalCost.mean)}</p>
+          <p>Margen: {ars(s.totalMargin.mean)}</p>
+          <p>Amortizacion (dias): {num(s.amortizationDays.mean)}</p>
+          <p>Dispositivos recolectados: {num(s.totalDevices.mean)}</p>
+          <p>Reacondicionados / Chatarra: {num(s.totalRefurbished.mean)} / {num(s.totalScrap.mean)}</p>
+          <p>Cobertura de demanda: {((result.spatial?.coveredDemandPct ?? 0) * 100).toFixed(1)}%</p>
+          <p>Distancia ponderada: {(result.spatial?.weightedDistanceKm ?? 0).toFixed(2)} km</p>
+        </div>
+
+        <h4 className="mt-4 text-sm font-semibold text-[var(--text-secondary)]">Por kiosko</h4>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-[var(--text-secondary)]">
+              <tr>
+                <th className="py-1 pr-2">Kiosko</th>
+                <th className="py-1 pr-2 text-right">Arribos</th>
+                <th className="py-1 pr-2 text-right">T. serv. (min)</th>
+                <th className="py-1 pr-2 text-right">Aceptaron</th>
+                <th className="py-1 pr-2 text-right">Ganancia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.kiosks.map((k) => (
+                <tr key={k.kioskId} className="border-t border-[var(--border)]">
+                  <td className="py-1 pr-2">{kioskName(k.kioskId)}</td>
+                  <td className="py-1 pr-2 text-right">{num(k.arrivals)}</td>
+                  <td className="py-1 pr-2 text-right">{k.avgServiceMinutes.toFixed(1)}</td>
+                  <td className="py-1 pr-2 text-right">{num(k.accepted)}</td>
+                  <td className="py-1 pr-2 text-right">{ars(k.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         {result.warnings.length > 0 && (
           <div className="mt-4 rounded border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
             {result.warnings[0]}

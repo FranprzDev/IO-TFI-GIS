@@ -33,8 +33,6 @@ export interface GlobalParams {
   confidenceLevel: number;
   warmupDays: number;
   serviceTime: UniformDistributionParams;
-  deviceValue: NormalDistributionParams;
-  operationCostPerDevice: number;
   serviceDistanceKm: number;
 }
 
@@ -67,7 +65,11 @@ export interface ScenarioInput {
 
 export interface KioskRunMetrics {
   kioskId: string;
+  arrivals: number;
+  accepted: number;
   devicesCollected: number;
+  refurbished: number;
+  scrap: number;
   revenue: number;
   cost: number;
   margin: number;
@@ -78,6 +80,8 @@ export interface SimulationRunResult {
   seed: number;
   kiosks: KioskRunMetrics[];
   totalDevices: number;
+  totalRefurbished: number;
+  totalScrap: number;
   totalRevenue: number;
   totalCost: number;
   totalMargin: number;
@@ -131,9 +135,13 @@ export interface SimulationResult {
     totalRevenue: KpiSummary;
     totalCost: KpiSummary;
     totalDevices: KpiSummary;
+    totalRefurbished: KpiSummary;
+    totalScrap: KpiSummary;
     amortizationDays: KpiSummary;
     feasibleProbability: number;
+    recommendation: "S1" | "S2";
   };
+  kiosks: KioskRunMetrics[];
   warnings: string[];
   spatial?: SpatialMetrics;
 }
@@ -162,8 +170,6 @@ export interface OptimizationRequest {
   demandZones: DemandZone[];
   global: GlobalParams;
   serviceTime: UniformDistributionParams;
-  deviceValue: NormalDistributionParams;
-  operationCostPerDevice: number;
   minSites: number;
   maxSites: number;
   scoreWeights: ScoreWeights;

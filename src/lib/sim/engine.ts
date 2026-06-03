@@ -27,6 +27,23 @@ const ARRIVALS_LAMBDA_PER_HOUR = 5;
 /** Operating window: 9:00–22:00 = 13 hours. After that the day is over. */
 const OPERATING_HOURS_PER_DAY = 13;
 
+/**
+ * Revenue model (fixed assumptions from the verbal model, all in ARS).
+ *
+ * A user who completes the appraisal receives an offer and accepts it with
+ * probability OFFER_ACCEPTANCE_P (Binomial). Only accepted offers yield a
+ * collected device. Each delivered device is either refurbishable or scrap, and
+ * the company's income (ganancia) is a fixed percentage of the device's value.
+ */
+const OFFER_ACCEPTANCE_P = 0.70;
+const REFURBISH_RATE = 0.75; // 75% refurbishable, 25% scrap
+const REFURBISHED_VALUE_MU = 250_000;
+const REFURBISHED_VALUE_SIGMA = 100_000;
+const REFURBISHED_PROFIT = 0.30;
+const SCRAP_VALUE_MU = 15_000;
+const SCRAP_VALUE_SIGMA = 10_000;
+const SCRAP_PROFIT = 0.10;
+
 interface RunOptions {
   /** Build Voronoi cell polygons in the result's spatial snapshot (map only). */
   includeSpatialCells?: boolean;
@@ -52,9 +69,9 @@ function* simulateRun(
   const rng = new LcgRng(seed);
   const sampleNormal = createNormalSampler();
 
-  const acc = new Map<string, { devices: number; revenue: number; cost: number; service: number; }>();
+  const acc = new Map<string, { arrivals: number; accepted: number; refurbished: number; scrap: number; revenue: number; service: number; }>();
   for (const kiosk of activeKiosks) {
-    acc.set(kiosk.id, { devices: 0, revenue: 0, cost: 0, service: 0 });
+    acc.set(kiosk.id, { arrivals: 0, accepted: 0, refurbished: 0, scrap: 0, revenue: 0, service: 0 });
   }
 
   for (let day = 1; day <= input.global.horizonDays; day++) {
@@ -65,13 +82,24 @@ function* simulateRun(
       for (let hour = 0; hour < OPERATING_HOURS_PER_DAY; hour++) {
         const arrivals = samplePoisson(rng, ARRIVALS_LAMBDA_PER_HOUR);
         for (let j = 0; j < arrivals; j++) {
-          const serviceMin = sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
-          const value = Math.max(0, sampleNormal(rng, input.global.deviceValue.mu, input.global.deviceValue.sigma));
+          // Every arrival completes the appraisal (service time) and gets an offer.
+          a.arrivals += 1;
+          a.service += sampleUniform(rng, input.global.serviceTime.a, input.global.serviceTime.b);
 
-          a.devices += 1;
-          a.revenue += value;
-          a.cost += input.global.operationCostPerDevice;
-          a.service += serviceMin;
+          // Offer acceptance ~ Bernoulli(p). Rejecters leave without delivering.
+          if (rng.nextU01() >= OFFER_ACCEPTANCE_P) continue;
+          a.accepted += 1;
+
+          // Delivered device: refurbishable (75%) or scrap (25%); income = value * profit%.
+          if (rng.nextU01() < REFURBISH_RATE) {
+            a.refurbished += 1;
+            const value = Math.max(0, sampleNormal(rng, REFURBISHED_VALUE_MU, REFURBISHED_VALUE_SIGMA));
+            a.revenue += value * REFURBISHED_PROFIT;
+          } else {
+            a.scrap += 1;
+            const value = Math.max(0, sampleNormal(rng, SCRAP_VALUE_MU, SCRAP_VALUE_SIGMA));
+            a.revenue += value * SCRAP_PROFIT;
+          }
         }
       }
     }
@@ -86,25 +114,32 @@ function* simulateRun(
     const v = acc.get(k.id)!;
     return {
       kioskId: k.id,
-      devicesCollected: v.devices,
+      arrivals: v.arrivals,
+      accepted: v.accepted,
+      devicesCollected: v.accepted,
+      refurbished: v.refurbished,
+      scrap: v.scrap,
       revenue: v.revenue,
-      cost: v.cost + fixedCostPerKiosk,
-      margin: v.revenue - (v.cost + fixedCostPerKiosk),
-      avgServiceMinutes: v.devices > 0 ? v.service / v.devices : 0,
+      cost: fixedCostPerKiosk,
+      margin: v.revenue - fixedCostPerKiosk,
+      avgServiceMinutes: v.arrivals > 0 ? v.service / v.arrivals : 0,
     };
   });
 
   const totalDevices = kiosks.reduce((s, k) => s + k.devicesCollected, 0);
+  const totalRefurbished = kiosks.reduce((s, k) => s + k.refurbished, 0);
+  const totalScrap = kiosks.reduce((s, k) => s + k.scrap, 0);
   const totalRevenue = kiosks.reduce((s, k) => s + k.revenue, 0);
   const totalCost = kiosks.reduce((s, k) => s + k.cost, 0);
   const totalMargin = totalRevenue - totalCost;
-  const totalAcquisition = activeKiosks.length * KIOSK_ACQUISITION_COST_ARS;
+  // Investment = total fixed cost (acquisition + maintenance). S1 invest iff income > investment.
+  const totalInvestment = totalCost;
+  const feasible = totalRevenue > totalInvestment;
   const amortizationDays = totalMargin > 0
-    ? Math.max(1, Math.round((totalAcquisition / totalMargin) * input.global.horizonDays))
+    ? Math.max(1, Math.round((activeKiosks.length * KIOSK_ACQUISITION_COST_ARS / totalMargin) * input.global.horizonDays))
     : Number.POSITIVE_INFINITY;
-  const feasible = totalMargin >= 0 && amortizationDays <= input.global.horizonDays;
 
-  return { seed, kiosks, totalDevices, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
+  return { seed, kiosks, totalDevices, totalRefurbished, totalScrap, totalRevenue, totalCost, totalMargin, amortizationDays, feasible };
 }
 
 function overConfigWarnings(): string[] {
@@ -120,8 +155,11 @@ function buildSummary(run: SimulationRunResult, horizonDays: number): Simulation
     totalRevenue: point(run.totalRevenue),
     totalCost: point(run.totalCost),
     totalDevices: point(run.totalDevices),
+    totalRefurbished: point(run.totalRefurbished),
+    totalScrap: point(run.totalScrap),
     amortizationDays: point(amortization),
     feasibleProbability: run.feasible ? 1 : 0,
+    recommendation: run.feasible ? "S1" : "S2",
   };
 }
 
@@ -132,6 +170,7 @@ function buildResult(input: ScenarioInput, run: SimulationRunResult, spatial: Sp
     timestamp: new Date().toISOString(),
     input,
     summary: buildSummary(run, input.global.horizonDays),
+    kiosks: run.kiosks,
     warnings: overConfigWarnings(),
     spatial,
   };

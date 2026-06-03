@@ -46,8 +46,6 @@ const base: ScenarioInput = {
     confidenceLevel: 0.95,
     warmupDays: 0,
     serviceTime: { kind: "uniform", a: 4, b: 10 },
-    deviceValue: { kind: "normal", mu: 120, sigma: 35 },
-    operationCostPerDevice: 20,
     serviceDistanceKm: 10,
   },
 };
@@ -58,6 +56,16 @@ assert.ok(validateScenario({ ...base, global: { ...base.global, horizonDays: 0 }
 const result = runSimulation(base);
 assert.ok(result.summary.totalRevenue.mean > 0);
 assert.ok(result.summary.totalMargin.ci95Upper >= result.summary.totalMargin.ci95Lower);
+
+// Revenue model: Binomial acceptance (~70%) and refurbish/scrap split (~75/25).
+(function testRevenueModel() {
+  const k = result.kiosks[0];
+  approx(k.accepted / k.arrivals, 0.66, 0.74); // p = 0.70
+  assert.equal(k.refurbished + k.scrap, k.devicesCollected); // only accepted are collected
+  approx(k.refurbished / k.devicesCollected, 0.71, 0.79); // 75% refurbishable
+  assert.equal(result.summary.totalDevices.mean, result.summary.totalRefurbished.mean + result.summary.totalScrap.mean);
+  assert.ok(result.summary.recommendation === "S1" || result.summary.recommendation === "S2");
+})();
 
 const invalidRes = validateScenario({ ...base, global: { ...base.global, serviceTime: { kind: "uniform", a: 12, b: 10 } } });
 assert.ok(invalidRes.some((e) => e.field === "global.serviceTime"));
