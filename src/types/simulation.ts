@@ -85,7 +85,6 @@ export interface SimulationRunResult {
   totalRevenue: number;
   totalCost: number;
   totalMargin: number;
-  amortizationDays: number;
   feasible: boolean;
 }
 
@@ -137,12 +136,10 @@ export interface SimulationResult {
     totalDevices: KpiSummary;
     totalRefurbished: KpiSummary;
     totalScrap: KpiSummary;
-    amortizationDays: KpiSummary;
     feasibleProbability: number;
     recommendation: "S1" | "S2";
   };
   kiosks: KioskRunMetrics[];
-  warnings: string[];
   spatial?: SpatialMetrics;
 }
 
@@ -151,8 +148,8 @@ export interface HistoryEntry {
   timestamp: string;
   scenario: ScenarioKey;
   seed: number;
+  horizonDays: number;
   summary: SimulationResult["summary"];
-  warnings: string[];
 }
 
 export interface CandidateEvaluation {
