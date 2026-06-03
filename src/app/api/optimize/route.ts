@@ -62,8 +62,7 @@ export async function POST(req: Request) {
           const siteIndex = progress.siteCount - normalizedBody.minSites;
           const absoluteFraction = (siteIndex + perSiteFraction) / siteSpan;
           const pct = Math.floor(Math.min(100, Math.max(0, absoluteFraction * 100)));
-          // Throttle: only emit when the integer percentage actually advances,
-          // so thousands of evaluations don't enqueue thousands of SSE chunks.
+
           if (pct > lastReportedPct) {
             lastReportedPct = pct;
             send("progress", { stage: progress.stage, siteCount: progress.siteCount, pct });

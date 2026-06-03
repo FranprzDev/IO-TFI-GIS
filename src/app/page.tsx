@@ -82,10 +82,6 @@ export default function Home() {
   const [selectedOptimizationIds, setSelectedOptimizationIds] = useState<string[]>([]);
   const { placeKiosk } = useTucumanKioskPlacement(setKiosks);
 
-  // Hydrate persisted values after mount only â€” reading localStorage during
-  // render would make the server and client HTML disagree (hydration error).
-  // Setting state here on mount is the intended hydration-safe pattern, so the
-  // cascading-render lint rule is deliberately suppressed for these two reads.
   useEffect(() => {
     window.localStorage.removeItem(LAST_RESULT_KEY);
     const stored = readScenarioDraft<Draft>();
@@ -527,15 +523,17 @@ export default function Home() {
         </aside>
 
         <main className="flex min-h-screen flex-col p-4">
-          {activeProgress && (
-            <div className="mb-4">
-              <ProgressCard title={activeProgress.title} value={activeProgress.value}>
-                {activeProgress.body}
-              </ProgressCard>
-            </div>
-          )}
+          <div className="relative min-h-0 flex-1">
+            {activeProgress && (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-[1200] flex justify-center px-3">
+                <div className="pointer-events-auto w-full max-w-md shadow-xl">
+                  <ProgressCard title={activeProgress.title} value={activeProgress.value}>
+                    {activeProgress.body}
+                  </ProgressCard>
+                </div>
+              </div>
+            )}
 
-          <div className="min-h-0 flex-1">
             <KioskLeafletMap
               kiosks={kiosks}
               demandZones={demandZones}
