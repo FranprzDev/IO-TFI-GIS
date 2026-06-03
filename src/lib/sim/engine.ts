@@ -175,16 +175,26 @@ export async function runSimulationAsync(
   input: ScenarioInput,
   onProgress?: (info: ProgressInfo) => void,
 ): Promise<SimulationResult> {
-  const { activeKiosks, spatial } = prepareSharedState(input, true);
+  // The day-by-day run is location-independent (constant lambda) and does not
+  // need the spatial snapshot, so we stream day progress first and build the
+  // (expensive) Voronoi snapshot afterwards — the progress bar starts moving
+  // from day 1 instead of stalling on the upfront geometry build.
+  const activeKiosks = input.kiosks.filter((k) => k.active !== false);
+
+  // The day computation is cheap, so we pace the streamed run to ~VISIBLE_RUN_MS
+  // (capped per day) so the progress visibly advances day by day in the UI
+  // instead of finishing in a single imperceptible flash.
+  const VISIBLE_RUN_MS = 2000;
+  const delayPerDayMs = Math.min(12, VISIBLE_RUN_MS / Math.max(1, input.global.horizonDays));
 
   const gen = simulateRun(input, activeKiosks);
   let step = gen.next();
   while (!step.done) {
     onProgress?.(step.value);
     step = gen.next();
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, delayPerDayMs));
   }
 
+  const spatial = buildSpatialSnapshot(activeKiosks, input.demandZones, input.global.serviceDistanceKm, { includeCells: true });
   return buildResult(input, step.value, spatial);
 }
