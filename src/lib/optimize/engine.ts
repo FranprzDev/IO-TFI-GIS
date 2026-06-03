@@ -5,7 +5,6 @@ import {
   type SpatialSnapshot,
 } from "@/lib/spatial/voronoi";
 import type {
-  CandidateEvaluation,
   Kiosk,
   OptimizationRequest,
   OptimizationResult,
@@ -75,21 +74,6 @@ function scoreSpatialMetrics(
   };
 }
 
-function buildCandidateEvaluations(spatial: SpatialMetrics, kiosks: Kiosk[]): CandidateEvaluation[] {
-  const demandByKiosk = spatial.demandByKiosk ?? {};
-  return kiosks
-    .filter((kiosk) => kiosk.active !== false)
-    .map((kiosk) => ({
-      kioskId: kiosk.id,
-      nombre: kiosk.nombre,
-      source: kiosk.source,
-      chain: kiosk.chain,
-      scoreContribution: demandByKiosk[kiosk.id]?.effectiveDemand ?? 0,
-      assignedDemand: demandByKiosk[kiosk.id]?.assignedDemand ?? 0,
-    }))
-    .sort((a, b) => b.assignedDemand - a.assignedDemand);
-}
-
 async function evaluateForScoreBounds(
   projectedKiosks: Array<{ kiosk: Kiosk; projected: { x: number; y: number } }>,
   projectedDemandZones: ProjectedDemandZone[],
@@ -113,10 +97,6 @@ async function evaluateForScoreBounds(
   return {
     weightedDistanceKm: { min: minDistance, max: maxDistance },
   };
-}
-
-function canAddCandidate(): boolean {
-  return true;
 }
 
 export async function runOptimization(
@@ -172,7 +152,6 @@ export async function runOptimization(
 
       for (const candidate of remaining) {
         completed += 1;
-        if (!canAddCandidate()) continue;
         const trialIds = new Set(selectedIds);
         trialIds.add(candidate.id);
         const spatial = getSpatial(trialIds);
@@ -202,7 +181,6 @@ export async function runOptimization(
       for (const selectedKiosk of selected) {
         for (const candidate of unselected) {
           completed += 1;
-          if (!canAddCandidate()) continue;
           const trialIds = new Set(selectedIds);
           trialIds.delete(selectedKiosk.id);
           trialIds.add(candidate.id);
@@ -239,7 +217,6 @@ export async function runOptimization(
         cannibalization: components.cannibalization,
       },
       spatial,
-      candidateEvaluations: buildCandidateEvaluations(spatial, request.kiosks),
     });
     onProgress?.({ stage: "finalize", completed: siteCount - effectiveMinSites + 1, total: effectiveMaxSites - effectiveMinSites + 1, siteCount });
   }

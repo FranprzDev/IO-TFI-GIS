@@ -45,7 +45,6 @@ function approx(value: number, low: number, high: number) {
 const base: ScenarioInput = {
   scenario: "A",
   seed: 123,
-  conglomerates: [],
   kiosks: [{ id: "k1", nombre: "k1", calle: "calle 1", lat: -26.8, lon: -65.2, chain: "Gobierno", source: "csv", active: true, attractivenessWeight: 1 }],
   demandZones: [
     { id: "z1", nombre: "zona 1", departamento: "Capital", lat: -26.8, lon: -65.2, population2022: 10000, density: 3500, demandWeight: 10000 },
@@ -53,8 +52,6 @@ const base: ScenarioInput = {
   ],
   global: {
     horizonDays: 90,
-    confidenceLevel: 0.95,
-    warmupDays: 0,
     serviceTime: { kind: "uniform", a: 4, b: 10 },
     serviceDistanceKm: 10,
   },

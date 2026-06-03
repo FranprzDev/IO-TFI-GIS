@@ -16,22 +16,12 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
 
   const g = input.global;
   if (!Number.isInteger(g.horizonDays) || g.horizonDays <= 0) errors.push({ field: "global.horizonDays", message: "Horizonte debe ser entero > 0" });
-  if (!finite(g.confidenceLevel) || g.confidenceLevel <= 0 || g.confidenceLevel >= 1) errors.push({ field: "global.confidenceLevel", message: "Nivel de confianza debe estar entre 0 y 1" });
-  if (!Number.isInteger(g.warmupDays) || g.warmupDays < 0) errors.push({ field: "global.warmupDays", message: "Warm-up debe ser entero >= 0" });
   if (!finite(g.serviceDistanceKm) || g.serviceDistanceKm <= 0) errors.push({ field: "global.serviceDistanceKm", message: "Distancia de servicio debe ser > 0" });
 
   if (!finite(g.serviceTime.a) || !finite(g.serviceTime.b) || g.serviceTime.a >= g.serviceTime.b) errors.push({ field: "global.serviceTime", message: "Uniforme servicio requiere a < b" });
 
   if (input.kiosks.length === 0) errors.push({ field: "kiosks", message: "Debe existir al menos un kiosko" });
   if (input.demandZones.length === 0) errors.push({ field: "demandZones", message: "Debe existir al menos una zona de demanda" });
-
-  for (const c of input.conglomerates) {
-    if (!c.id) errors.push({ field: `conglomerate.${c.nombre}.id`, message: "ID requerido" });
-    if (!finite(c.dailyDemand.mu)) errors.push({ field: `conglomerate.${c.id}.mu`, message: "Mu invalido" });
-    if (!finite(c.dailyDemand.sigma) || c.dailyDemand.sigma <= 0) errors.push({ field: `conglomerate.${c.id}.sigma`, message: "Sigma debe ser > 0" });
-    if (!finite(c.interestPct) || c.interestPct < 0 || c.interestPct > 1) errors.push({ field: `conglomerate.${c.id}.interestPct`, message: "Porcentaje interes entre 0 y 1" });
-    if (!finite(c.operationalHours) || c.operationalHours <= 0 || c.operationalHours > 24) errors.push({ field: `conglomerate.${c.id}.operationalHours`, message: "Horario operativo invalido" });
-  }
 
   for (const k of input.kiosks) {
     if (!k.id) errors.push({ field: `kiosk.${k.nombre}.id`, message: "ID requerido" });
