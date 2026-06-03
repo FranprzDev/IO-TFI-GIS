@@ -2,7 +2,6 @@ import type { HistoryEntry, OptimizationResult, SimulationResult } from "@/types
 
 export const HISTORY_KEY = "ecoatm_sim_history_v1";
 export const SCENARIO_KEY = "ecoatm_sim_scenario_main_v1";
-export const LAST_RESULT_KEY = "ecoatm_sim_last_result_main_v1";
 export const OPTIMIZATION_KEY = "ecoatm_sim_optimization_main_v1";
 export const OPTIMIZATION_SELECTION_KEY = "ecoatm_sim_optimization_selection_main_v1";
 
@@ -48,22 +47,6 @@ export function readScenarioDraft<T>(): T | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
-export function saveLastResult(result: SimulationResult): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LAST_RESULT_KEY, JSON.stringify(result));
-}
-
-export function readLastResult(): SimulationResult | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(LAST_RESULT_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as SimulationResult;
   } catch {
     return null;
   }

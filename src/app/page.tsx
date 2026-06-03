@@ -9,7 +9,6 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { useTucumanKioskPlacement } from "@/hooks/useTucumanKioskPlacement";
 import {
   HISTORY_KEY,
-  LAST_RESULT_KEY,
   OPTIMIZATION_KEY,
   OPTIMIZATION_SELECTION_KEY,
   SCENARIO_KEY,
@@ -18,7 +17,6 @@ import {
   readOptimizationSelection,
   readScenarioDraft,
   saveHistoryEntry,
-  saveLastResult,
   saveOptimizationResult,
   saveOptimizationSelection,
   saveScenarioDraft,
@@ -88,7 +86,6 @@ export default function Home() {
   const { placeKiosk } = useTucumanKioskPlacement(setKiosks);
 
   useEffect(() => {
-    window.localStorage.removeItem(LAST_RESULT_KEY);
     const stored = readScenarioDraft<Draft>();
     /* eslint-disable react-hooks/set-state-in-effect */
     if (stored) setDraft((prev) => ({ ...prev, ...stored }));
@@ -105,7 +102,6 @@ export default function Home() {
     if (!alreadySaved) {
       saveHistoryEntry(simResult);
     }
-    saveLastResult(simResult);
     setHistoryEntries(readHistory());
   };
 
@@ -119,7 +115,6 @@ export default function Home() {
     });
   };
 
-  const clearHistoryCompare = () => setHistoryCompareIds([]);
   const openHistoryCompareModal = () => {
     if (historyCompareIds.length === 2) {
       setShowHistoryCompareModal(true);
@@ -373,7 +368,6 @@ export default function Home() {
     if (action === "clear") {
       window.localStorage.removeItem(HISTORY_KEY);
       window.localStorage.removeItem(SCENARIO_KEY);
-      window.localStorage.removeItem(LAST_RESULT_KEY);
       window.localStorage.removeItem(OPTIMIZATION_KEY);
       window.localStorage.removeItem(OPTIMIZATION_SELECTION_KEY);
       setResult(null);
