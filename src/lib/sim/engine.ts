@@ -97,7 +97,6 @@ function* simulateRun(
       revenue: v.revenue,
       cost: fixedCostPerKiosk,
       margin: v.revenue - fixedCostPerKiosk,
-      avgServiceMinutes: v.arrivals > 0 ? v.service / v.arrivals : 0,
     };
   });
 

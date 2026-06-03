@@ -6,12 +6,6 @@ import type { DemandZone, GeoPoint, Kiosk, SpatialAssignment, SpatialMetrics, Vo
 
 const WGS84 = "EPSG:4326";
 const UTM_20S = "EPSG:32720";
-const TUCUMAN_BOUNDS = {
-  south: -28.2,
-  west: -66.2,
-  north: -25.8,
-  east: -64.8,
-};
 
 export interface ProjectedPoint {
   x: number;
@@ -64,15 +58,42 @@ export function unprojectPoint(point: ProjectedPoint): GeoPoint {
   return { lat, lon };
 }
 
+let cachedProjectedBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+
+/**
+ * Voronoi bounding box in projected (UTM) meters, derived ONCE from the real
+ * province polygon plus a margin and cached for every later build (the optimizer
+ * builds many snapshots). d3-delaunay clips every cell to this box, so it must
+ * fully enclose Tucuman — otherwise the province area outside the box is left
+ * without a cell (an undivided strip). Projecting all polygon vertices (not just
+ * two lat/lon corners) and adding a margin guarantees the cells overflow the
+ * border and, once clipped to the province, cover it completely.
+ */
 function getProjectedBounds() {
-  const sw = projectLatLon(TUCUMAN_BOUNDS.south, TUCUMAN_BOUNDS.west);
-  const ne = projectLatLon(TUCUMAN_BOUNDS.north, TUCUMAN_BOUNDS.east);
-  return {
-    minX: Math.min(sw.x, ne.x),
-    minY: Math.min(sw.y, ne.y),
-    maxX: Math.max(sw.x, ne.x),
-    maxY: Math.max(sw.y, ne.y),
+  if (cachedProjectedBounds) return cachedProjectedBounds;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const polygon of TUCUMAN_POLYGONS) {
+    for (const ring of polygon) {
+      for (const [lon, lat] of ring) {
+        const { x, y } = projectLatLon(lat, lon);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  const margin = Math.max(maxX - minX, maxY - minY) * 0.05;
+  cachedProjectedBounds = {
+    minX: minX - margin,
+    minY: minY - margin,
+    maxX: maxX + margin,
+    maxY: maxY + margin,
   };
+  return cachedProjectedBounds;
 }
 
 function toDemandWeight(zone: DemandZone): number {

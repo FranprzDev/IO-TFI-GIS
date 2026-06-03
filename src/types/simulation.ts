@@ -73,7 +73,6 @@ export interface KioskRunMetrics {
   revenue: number;
   cost: number;
   margin: number;
-  avgServiceMinutes: number;
 }
 
 export interface SimulationRunResult {
