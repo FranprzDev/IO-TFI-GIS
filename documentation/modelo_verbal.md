@@ -1,26 +1,43 @@
 Una empresa especializada en recolección automatizada de dispositivos electrónicos usados opera una red de kioscos inteligentes instalados en establecimientos de alta concurrencia de la provincia de Tucumán, tales como supermercados, centros comerciales y polos educativos. El cliente, Neil Fried, Senior Vice President of Corporate Development de ecoATM, requiere evaluar la viabilidad económica y operativa de distintas configuraciones de expansión de la red, con el objetivo de maximizar el volumen de recolección de equipos de TIC pequeños (celulares y tablets) y asegurar el retorno económico esperado sobre la inversión.
-Previamente a definir una tasa de llegada de usuarios, lo ideal es la optimización de los puntos utilizando la densidad poblacional de cada zona, pero esto no modifica la tasa de llegada.
-Los usuarios arriban al área de influencia del kiosco de forma aleatoria e independiente entre sí. La tasa de llegada es de 5 usuarios por hora. En ambos casos, el proceso de arribo se modela mediante una distribución de Poisson con dicho parámetro λ correspondiente a cada bloque.
-Una vez que el usuario inicia la interacción con el kiosco, el dispositivo es sometido a un proceso estandarizado de tasación que incluye diagnóstico de software, verificación del estado de la batería y evaluación cosmética mediante cámaras internas. Dicho proceso demanda un tiempo mínimo de 4 minutos y un máximo de 10 minutos, siendo cualquier valor dentro de ese intervalo igualmente probable. Por lo tanto, el tiempo de servicio se modela mediante una distribución Uniforme U[4, 10] expresada en minutos. 
-De la totalidad de dispositivos ingresados al sistema, aproximadamente el 75% corresponde a equipos con posibilidad de reacondicionamiento y el 25% restante constituye chatarra electrónica.
-El valor económico ofrecido por cada equipo reacondicionado presenta una distribución Normal con media μ = $250,000 ARS y desvío estándar σ = $100,000 ARS, reflejando la concentración de valores alrededor del precio promedio de mercado para equipos usados en la región; la ganancia para este tipo de equipos es de un 30%
 
-El valor económico ofrecido por cada equipo destinado a chatarra presenta una distribución Normal con media μ = $15,000 ARS y desvío estándar σ = $10,000 ARS, correspondiente al valor de los metales preciosos recuperables, la ganancia es de un 10% por cada equipo. 
+Previo a la ejecución de la simulación, se lleva a cabo el proceso de optimización espacial de la red de kioscos. Este proceso determina la ubicación óptima de cada uno dentro de la provincia de Tucumán, evaluando ubicaciones candidatas en función de la densidad poblacional de cada zona, tipo de establecimiento anfitrión, cantidad de kioscos y la distancia entre puntos para evitar superposiciones.
+
+Una vez definida la configuración, los usuarios arriban al área de influencia del kiosco de forma aleatoria e independiente entre sí. La tasa de llegada es de 2 usuarios por hora. En ambos casos, el proceso de arribo se modela mediante una distribución de Poisson con dicho parámetro λ correspondiente a cada bloque.
+
+Una vez que el usuario inicia la interacción con el kiosco, el dispositivo es sometido a un proceso estandarizado de tasación que incluye diagnóstico de software, verificación del estado de la batería y evaluación cosmética mediante cámaras internas. Dicho proceso demanda un tiempo mínimo de 4 minutos y un máximo de 10 minutos, siendo cualquier valor dentro de ese intervalo igualmente probable. Por lo tanto, el tiempo de servicio se modela mediante una distribución Uniforme U[4, 10] expresada en minutos.
+
+De la totalidad de dispositivos ingresados al sistema, aproximadamente el 60% corresponde a equipos con posibilidad de reacondicionamiento y el 40% restante constituye chatarra electrónica.
+
+El valor económico ofrecido por cada equipo reacondicionado presenta una distribución Normal con media μ = $120,000 ARS y desvío estándar σ = $40,000 ARS, reflejando la concentración de valores alrededor del precio promedio de mercado para equipos usados en la región; la ganancia para este tipo de equipos es de un 10%.
+
+El valor económico ofrecido por cada equipo destinado a chatarra presenta una distribución Normal con media μ = $10,000 ARS y desvío estándar σ = $3,000 ARS, correspondiente al valor de los metales preciosos recuperables; la ganancia es de un 30% por cada equipo.
+
 Una vez que el kiosco genera la oferta económica al usuario, éste puede aceptarla o rechazarla.
+
 De acuerdo con estimaciones basadas en el comportamiento observado en mercados de características similares, en Estados Unidos se ha reportado que alrededor del 90% de los consumidores de dispositivos electrónicos ha utilizado o estaría dispuesto a utilizar programas de trade‑in, lo que evidencia una fuerte aceptación del canal de recompra de equipos usados. Sin embargo, esta cifra refleja la predisposición general a participar en esquemas de trade‑in y no una tasa puntual de aceptación de ofertas específicas en kioscos automáticos, por lo que en este trabajo se utiliza como referencia cualitativa y no como valor directo de modelo.
-En el contexto argentino, si bien existe una alta aceptación de los usados, el mercado es muy activo, mediante los canales informales, lo que genera cierta desconfianza hacia intermediarios formales hacen razonable suponer una tasa de aceptación menor que la observada en mercados más maduros como el estadounidense. Por ello, se adopta como supuesto de modelización que, entre los usuarios que llegan a completar la tasación y reciben una oferta económica en el kiosco, el 70% acepta la oferta y concreta la entrega del dispositivo, mientras que el 30% restante la rechaza y se retira sin completar la transacción. Dado que cada interacción representa un evento independiente con dos resultados posibles (aceptación o rechazo) y considerando que la probabilidad de aceptación se mantiene aproximadamente constante entre usuarios, esta variable se modela mediante una distribución Binomial con parámetro p=0,70. 
-Esta distribución permite estimar, para un conjunto de usuarios que completaron la tasación, cuántos efectivamente concretarán la entrega del dispositivo, impactando directamente en el volumen de recolección y en el ingreso económico proyectado por kiosco. Este valor se entiende como una hipótesis calibrada y coherente con las diferencias estructurales entre el mercado estadounidense y el argentino, y puede ajustarse en futuros trabajos en función de datos empíricos locales más detallados. 
+
+En el contexto argentino, si bien existe una alta aceptación de los usados, el mercado es muy activo mediante los canales informales, lo que genera cierta desconfianza hacia intermediarios formales, haciendo razonable suponer una tasa de aceptación menor que la observada en mercados más maduros como el estadounidense. Por ello, se adopta como supuesto de modelización que, entre los usuarios que llegan a completar la tasación y reciben una oferta económica en el kiosco, el 60% acepta la oferta y concreta la entrega del dispositivo, mientras que el 40% restante la rechaza y se retira sin completar la transacción. Dado que cada interacción representa un evento independiente con dos resultados posibles (aceptación o rechazo) y considerando que la probabilidad de aceptación se mantiene aproximadamente constante entre usuarios, esta variable se modela mediante una distribución Binomial con parámetro p = 0,60.
+
+Esta distribución permite estimar, para un conjunto de usuarios que completaron la tasación, cuántos efectivamente concretarán la entrega del dispositivo, impactando directamente en el volumen de recolección y en el ingreso económico proyectado por kiosco. Este valor se entiende como una hipótesis calibrada y coherente con las diferencias estructurales entre el mercado estadounidense y el argentino, y puede ajustarse en futuros trabajos en función de datos empíricos locales más detallados.
+
 Para asistir a la gerencia en la toma de decisiones, se proponen las siguientes alternativas:
-Si la ganancia de la empresa es mayor a el costo de la inversión en todos los kioscos bajo la configuración; entonces S1 se recomienda invertir en este mercado.
+
+Si la ganancia de la empresa es mayor al costo de la inversión en todos los kioscos bajo la configuración, entonces S1 se recomienda invertir en este mercado.
+
 Caso contrario, S2, no se recomienda invertir en este mercado.
-En promedio, el gasto incurrido por agregar un kiosco en una ubicación es de $20000 dólares ($28,000,000 ARS) el costo de mantener un kiosco activo es de $400 USD ($600,000 ARS). 
+
+En promedio, el gasto incurrido por agregar un kiosco en una ubicación es de $20,000 dólares ($28,000,000 ARS) y el costo de mantener un kiosco activo es de $5,000 dólares (dentro de estos costos se incluyen sueldos de los operadores, mantenimiento, pago de impuestos y tasas municipales, recolección periódica, precio del alquiler, marketing y growth).
+
 Se solicita simular la operación de la red durante un período de 365 días e informar para cada kiosco evaluado:
-Cantidad de usuarios que arribaron al kiosco.
-Tiempo promedio de servicio registrado.
-Cantidad de usuarios que aceptaron la oferta del kiosco.
-Valor económico total (ganancia) de los dispositivos recolectados.
+
+- Cantidad de usuarios que arribaron al kiosco.
+- Tiempo promedio de servicio registrado.
+- Cantidad de usuarios que aceptaron la oferta del kiosco.
+- Ganancia total posible de los dispositivos recolectados.
+
 Al finalizar el período, informar:
-Cantidad total de dispositivos recolectados por la red.
-Cantidad de equipos reacondicionados y cantidad de equipos chatarra.
-Ingreso económico total estimado de la red.
- Recomendación de inversión bajo el periodo dado.
+
+- Cantidad total de dispositivos recolectados por la red.
+- Cantidad de equipos reacondicionados y cantidad de equipos chatarra.
+- Ingreso económico total estimado de la red.
+- Recomendación de inversión bajo el período dado.

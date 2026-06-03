@@ -1,5 +1,10 @@
 
 export class MCM {
+  /* 
+    Esto lo sacamos de https://en.wikipedia.org/wiki/Linear_congruential_generator
+    En la parte de donde está la tablita (los valores).
+    Es el MCM el primero, que nos recomienda la teoría utilizar.
+  */
   private static readonly A = 1664525;
   private static readonly C = 1013904223;
   private static readonly M = 4294967296;
