@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 interface Props {
   open: boolean;
   title: string;
@@ -8,10 +10,10 @@ interface Props {
 }
 
 export function ConfirmModal({ open, title, onConfirm, onCancel }: Props) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text-primary)]">
+  if (!open || typeof document === "undefined") return null;
+  return createPortal((
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text-primary)] shadow-2xl">
         <h3 className="text-lg font-semibold">{title}</h3>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">Esta accion puede modificar escenarios y resultados.</p>
         <div className="mt-5 flex gap-3">
@@ -20,5 +22,5 @@ export function ConfirmModal({ open, title, onConfirm, onCancel }: Props) {
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

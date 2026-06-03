@@ -18,11 +18,9 @@ export function validateScenario(input: ScenarioInput): ValidationError[] {
   if (!Number.isInteger(g.horizonDays) || g.horizonDays <= 0) errors.push({ field: "global.horizonDays", message: "Horizonte debe ser entero > 0" });
   if (!finite(g.confidenceLevel) || g.confidenceLevel <= 0 || g.confidenceLevel >= 1) errors.push({ field: "global.confidenceLevel", message: "Nivel de confianza debe estar entre 0 y 1" });
   if (!Number.isInteger(g.warmupDays) || g.warmupDays < 0) errors.push({ field: "global.warmupDays", message: "Warm-up debe ser entero >= 0" });
-  if (!finite(g.operationCostPerDevice) || g.operationCostPerDevice < 0) errors.push({ field: "global.operationCostPerDevice", message: "Costo por dispositivo debe ser >= 0" });
   if (!finite(g.serviceDistanceKm) || g.serviceDistanceKm <= 0) errors.push({ field: "global.serviceDistanceKm", message: "Distancia de servicio debe ser > 0" });
 
   if (!finite(g.serviceTime.a) || !finite(g.serviceTime.b) || g.serviceTime.a >= g.serviceTime.b) errors.push({ field: "global.serviceTime", message: "Uniforme servicio requiere a < b" });
-  if (!finite(g.deviceValue.mu) || !finite(g.deviceValue.sigma) || g.deviceValue.sigma <= 0) errors.push({ field: "global.deviceValue", message: "Normal valor requiere sigma > 0" });
 
   if (input.kiosks.length === 0) errors.push({ field: "kiosks", message: "Debe existir al menos un kiosko" });
   if (input.demandZones.length === 0) errors.push({ field: "demandZones", message: "Debe existir al menos una zona de demanda" });

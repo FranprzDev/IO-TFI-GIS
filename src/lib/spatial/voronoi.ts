@@ -127,11 +127,7 @@ function polygonToGeoPoints(polygon: Polygon): GeoPoint[] {
 }
 
 export interface SnapshotOptions {
-  /**
-   * Build the Voronoi cell polygons (needed only for map rendering). Skipping
-   * them avoids one proj4 unprojection per polygon vertex per kiosk, which is
-   * pure waste during the optimizer's thousands of intermediate evaluations.
-   */
+
   includeCells?: boolean;
 }
 
@@ -161,8 +157,7 @@ export function buildSpatialSnapshotFromProjected(
 
   const delaunay = Delaunay.from(projectedKiosks, (d) => d.projected.x, (d) => d.projected.y);
   const bounds = getProjectedBounds();
-  // The Voronoi diagram is only needed for the cell polygons; skip building it
-  // when the caller does not need them.
+
   const voronoi = includeCells
     ? delaunay.voronoi([bounds.minX, bounds.minY, bounds.maxX, bounds.maxY])
     : null;
@@ -190,8 +185,7 @@ export function buildSpatialSnapshotFromProjected(
     const weight = toDemandWeight(zone);
     const densityWeight = 0.75 + (normalize(zone.density, minDensity, maxDensity) * 0.75);
     const contestedWeightContribution = weight * densityWeight;
-    // Smallest distance to any kiosk other than the nearest — computed in a
-    // single allocation-free pass (no intermediate array, no sort per zone).
+
     let secondNearestDistanceKm = Number.POSITIVE_INFINITY;
     for (let i = 0; i < projectedKiosks.length; i++) {
       if (i === nearestIndex) continue;

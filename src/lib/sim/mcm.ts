@@ -1,9 +1,9 @@
-export interface Rng {
-  nextU01(): number;
-  getSeed(): number;
-}
 
-export class LcgRng implements Rng {
+export class MCM {
+  private static readonly A = 1664525;
+  private static readonly C = 1013904223;
+  private static readonly M = 4294967296;
+
   private state: number;
 
   constructor(seed: number) {
@@ -12,8 +12,8 @@ export class LcgRng implements Rng {
   }
 
   nextU01(): number {
-    this.state = (1664525 * this.state + 1013904223) >>> 0;
-    return this.state / 4294967296;
+    this.state = (MCM.A * this.state + MCM.C) >>> 0;
+    return this.state / MCM.M;
   }
 
   getSeed(): number {

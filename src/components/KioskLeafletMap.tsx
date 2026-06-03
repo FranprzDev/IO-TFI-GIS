@@ -77,7 +77,6 @@ export function KioskLeafletMap({
     const handleClick = (event: L.LeafletMouseEvent) => onMapClickRef.current(event.latlng.lat, event.latlng.lng);
     map.on("click", handleClick);
 
-    // Leaflet needs a size recalculation once the container is mounted.
     queueMicrotask(() => map.invalidateSize());
 
     return () => {

@@ -68,7 +68,6 @@ function pointInPolygon(lat: number, lon: number, polygon: PolygonCoordinates) {
   if (polygon.length === 0) return false;
   if (!pointInRing(lat, lon, polygon[0])) return false;
 
-  // Interior rings carve out holes, if the GeoJSON ever contains them.
   for (let i = 1; i < polygon.length; i += 1) {
     if (pointInRing(lat, lon, polygon[i])) return false;
   }

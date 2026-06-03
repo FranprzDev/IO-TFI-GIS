@@ -41,7 +41,6 @@ function evaluateSpatialScenario(
   return buildSpatialSnapshotFromProjected(activeKiosks, projectedDemandZones, serviceDistanceKm, { includeCells });
 }
 
-/** Yield to the event loop so Node can GC and flush SSE progress between batches. */
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
