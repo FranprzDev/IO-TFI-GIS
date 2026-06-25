@@ -14,13 +14,13 @@ interface Well {
   id: string;
 }
 
-// Coordenadas precisas de Delfín Gallo, Tucumán
+// Coordenadas de Delfín Gallo, Tucumán
 const DELFIN_GALLO_BOUNDS: Shape = {
   points: [
-    { lat: -26.2850, lon: -65.2550 },
-    { lat: -26.3050, lon: -65.2550 },
-    { lat: -26.3050, lon: -65.2350 },
-    { lat: -26.2850, lon: -65.2350 },
+    { lat: -26.3400, lon: -65.2700 },
+    { lat: -26.3350, lon: -65.2650 },
+    { lat: -26.3320, lon: -65.2680 },
+    { lat: -26.3380, lon: -65.2720 },
   ],
   color: "#8B5CF6",
 };
@@ -30,13 +30,24 @@ export default function Home() {
   const [wells, setWells] = useState<Well[]>([]);
   const [drawingMode, setDrawingMode] = useState(false);
   const [wellMode, setWellMode] = useState(false);
+  const [currentShape, setCurrentShape] = useState<Shape | null>(null);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === "m") {
         e.preventDefault();
-        setDrawingMode((prev) => !prev);
-        setWellMode(false);
+        setDrawingMode((prev) => {
+          if (prev && currentShape && currentShape.points.length > 0) {
+            // Guardar la forma actual al desactivar
+            setShapes((s) => [...s, currentShape]);
+            setCurrentShape(null);
+          } else if (!prev) {
+            // Crear nueva forma vacía al activar
+            setCurrentShape({ points: [], color: generateColor() });
+          }
+          setWellMode(false);
+          return !prev;
+        });
       } else if (e.key.toLowerCase() === "p") {
         e.preventDefault();
         setWellMode((prev) => !prev);
@@ -46,7 +57,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, []);
+  }, [currentShape]);
 
   const generateColor = useCallback(() => {
     const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8"];
@@ -54,24 +65,20 @@ export default function Home() {
   }, []);
 
   const handleMapClick = useCallback((lat: number, lon: number) => {
-    if (drawingMode) {
-      setShapes((prev) => {
-        const lastShape = prev[prev.length - 1];
-        if (lastShape && lastShape.points.length < 20) {
-          return [
-            ...prev.slice(0, -1),
-            { ...lastShape, points: [...lastShape.points, { lat, lon }] },
-          ];
-        }
-        return [...prev, { points: [{ lat, lon }], color: generateColor() }];
-      });
+    if (drawingMode && currentShape) {
+      if (currentShape.points.length < 20) {
+        setCurrentShape({
+          ...currentShape,
+          points: [...currentShape.points, { lat, lon }],
+        });
+      }
     } else if (wellMode) {
       setWells((prev) => [
         ...prev,
         { lat, lon, id: `well-${Date.now()}` },
       ]);
     }
-  }, [drawingMode, wellMode, generateColor]);
+  }, [drawingMode, wellMode, currentShape]);
 
   const clearShapes = useCallback(() => {
     setShapes([DELFIN_GALLO_BOUNDS]);
@@ -115,7 +122,12 @@ export default function Home() {
           </button>
         </div>
       </div>
-      <GISMap shapes={shapes} wells={wells} onMapClick={handleMapClick} className="flex-1" />
+      <GISMap
+        shapes={currentShape ? [...shapes, currentShape] : shapes}
+        wells={wells}
+        onMapClick={handleMapClick}
+        className="flex-1"
+      />
     </div>
   );
 }
