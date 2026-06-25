@@ -50,23 +50,28 @@ export function GISMap({
     mapRef.current = map;
     map.fitBounds(L.geoJSON(TUCUMAN_GEOJSON).getBounds(), { padding: [24, 24] });
 
-    if (onMapClick) {
-      const handleClick = (event: L.LeafletMouseEvent) => onMapClick(event.latlng.lat, event.latlng.lng);
-      map.on("click", handleClick);
-      return () => {
-        map.off("click", handleClick);
-        map.remove();
-        mapRef.current = null;
-        overlayRef.current = null;
-      };
-    }
-
     queueMicrotask(() => map.invalidateSize());
 
     return () => {
-      map.remove();
-      mapRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
       overlayRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !onMapClick) return;
+
+    const handleClick = (event: L.LeafletMouseEvent) => {
+      onMapClick(event.latlng.lat, event.latlng.lng);
+    };
+
+    map.on("click", handleClick);
+    return () => {
+      map.off("click", handleClick);
     };
   }, [onMapClick]);
 
@@ -87,7 +92,7 @@ export function GISMap({
       interactive: false,
     }).addTo(overlay);
 
-    shapes.forEach((shape, index) => {
+    shapes.forEach((shape) => {
       const color = shape.color || "#3B82F6";
       if (shape.points.length < 3) return;
 

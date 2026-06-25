@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GISMap } from "@/components/KioskLeafletMap";
 
 interface Shape {
@@ -14,13 +14,13 @@ interface Well {
   id: string;
 }
 
-// Coordenadas de Delfín Gallo (aproximadas)
+// Coordenadas precisas de Delfín Gallo, Tucumán
 const DELFIN_GALLO_BOUNDS: Shape = {
   points: [
-    { lat: -26.3, lon: -65.2 },
-    { lat: -26.35, lon: -65.2 },
-    { lat: -26.35, lon: -65.15 },
-    { lat: -26.3, lon: -65.15 },
+    { lat: -26.2850, lon: -65.2550 },
+    { lat: -26.3050, lon: -65.2550 },
+    { lat: -26.3050, lon: -65.2350 },
+    { lat: -26.2850, lon: -65.2350 },
   ],
   color: "#8B5CF6",
 };
@@ -34,9 +34,11 @@ export default function Home() {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
         setDrawingMode((prev) => !prev);
         setWellMode(false);
       } else if (e.key.toLowerCase() === "p") {
+        e.preventDefault();
         setWellMode((prev) => !prev);
         setDrawingMode(false);
       }
@@ -46,14 +48,19 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, []);
 
-  const handleMapClick = (lat: number, lon: number) => {
+  const generateColor = useCallback(() => {
+    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8"];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }, []);
+
+  const handleMapClick = useCallback((lat: number, lon: number) => {
     if (drawingMode) {
       setShapes((prev) => {
         const lastShape = prev[prev.length - 1];
-        if (lastShape && (!lastShape.points || lastShape.points.length < 20)) {
+        if (lastShape && lastShape.points.length < 20) {
           return [
             ...prev.slice(0, -1),
-            { ...lastShape, points: [...(lastShape.points || []), { lat, lon }] },
+            { ...lastShape, points: [...lastShape.points, { lat, lon }] },
           ];
         }
         return [...prev, { points: [{ lat, lon }], color: generateColor() }];
@@ -64,15 +71,15 @@ export default function Home() {
         { lat, lon, id: `well-${Date.now()}` },
       ]);
     }
-  };
+  }, [drawingMode, wellMode, generateColor]);
 
-  const generateColor = () => {
-    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8"];
-    return colors[Math.floor(Math.random() * colors.length)];
-  };
+  const clearShapes = useCallback(() => {
+    setShapes([DELFIN_GALLO_BOUNDS]);
+  }, []);
 
-  const clearShapes = () => setShapes([]);
-  const clearWells = () => setWells([]);
+  const clearWells = useCallback(() => {
+    setWells([]);
+  }, []);
 
   return (
     <div className="flex h-screen flex-col">
