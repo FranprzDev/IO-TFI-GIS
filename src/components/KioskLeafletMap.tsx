@@ -9,12 +9,20 @@ interface Shape {
   color?: string;
 }
 
+interface Well {
+  lat: number;
+  lon: number;
+  id: string;
+}
+
 export function GISMap({
   shapes = [],
+  wells = [],
   onMapClick,
   className,
 }: {
   shapes?: Shape[];
+  wells?: Well[];
   onMapClick?: (lat: number, lon: number) => void;
   className?: string;
 }) {
@@ -93,7 +101,17 @@ export function GISMap({
         },
       ).addTo(overlay);
     });
-  }, [shapes]);
+
+    wells.forEach((well) => {
+      L.circleMarker([well.lat, well.lon], {
+        radius: 6,
+        color: "#EF4444",
+        fillColor: "#FCA5A5",
+        fillOpacity: 0.8,
+        weight: 2,
+      }).bindPopup(`Pozo ${well.id}`).addTo(overlay);
+    });
+  }, [shapes, wells]);
 
   return <div ref={containerRef} className={className ?? "h-screen w-full rounded-xl border border-[var(--border)]"} />;
 }
