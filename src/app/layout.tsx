@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
-import { Toaster } from "sonner";
 import "./globals.css";
 
 const sans = Space_Grotesk({ variable: "--font-sans", subsets: ["latin"] });
@@ -16,7 +15,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="es" className={`${sans.variable} ${mono.variable}`}>
       <body>
         {children}
-        <Toaster position="top-center" richColors theme="dark" />
       </body>
     </html>
   );
