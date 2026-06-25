@@ -29,6 +29,7 @@ export function GISMap({
       center: TUCUMAN_CENTER,
       zoom: 8,
       scrollWheelZoom: true,
+      doubleClickZoom: false,
       maxBounds: TUCUMAN_BOUNDS,
       maxBoundsViscosity: 0.7,
     });
